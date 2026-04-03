@@ -7,8 +7,6 @@ idf_component_register(
         "basic_demo_settings.c"
         "basic_demo_wifi.c"
         "config_http_server.c"
-        "lua_module/lua_module_gpio.c"
-        "lua_module/lua_module_led_strip.c"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -39,6 +37,11 @@ idf_component_register(
         json
         nvs_flash
         wear_levelling
+        lua_module_delay
+        lua_module_event_publisher
+        lua_module_gpio
+        lua_module_led_strip
+        lua_module_storage
     EMBED_TXTFILES
         "web/index.html"
         "web/styles.css"

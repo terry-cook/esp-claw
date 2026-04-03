@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include "cap_lua_internal.h"
+#include "lua_module_storage.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -11,9 +11,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "cap_lua.h"
 #include "lauxlib.h"
 
-static int cap_lua_storage_mkdir(lua_State *L)
+static int lua_module_storage_mkdir(lua_State *L)
 {
     const char *path = luaL_checkstring(L, 1);
 
@@ -25,7 +26,7 @@ static int cap_lua_storage_mkdir(lua_State *L)
     return 1;
 }
 
-static int cap_lua_storage_write_file(lua_State *L)
+static int lua_module_storage_write_file(lua_State *L)
 {
     const char *path = luaL_checkstring(L, 1);
     size_t content_len = 0;
@@ -47,7 +48,7 @@ static int cap_lua_storage_write_file(lua_State *L)
     return 1;
 }
 
-static int cap_lua_storage_read_file(lua_State *L)
+static int lua_module_storage_read_file(lua_State *L)
 {
     const char *path = luaL_checkstring(L, 1);
     FILE *file = NULL;
@@ -96,11 +97,16 @@ static int cap_lua_storage_read_file(lua_State *L)
 int luaopen_storage(lua_State *L)
 {
     lua_newtable(L);
-    lua_pushcfunction(L, cap_lua_storage_mkdir);
+    lua_pushcfunction(L, lua_module_storage_mkdir);
     lua_setfield(L, -2, "mkdir");
-    lua_pushcfunction(L, cap_lua_storage_write_file);
+    lua_pushcfunction(L, lua_module_storage_write_file);
     lua_setfield(L, -2, "write_file");
-    lua_pushcfunction(L, cap_lua_storage_read_file);
+    lua_pushcfunction(L, lua_module_storage_read_file);
     lua_setfield(L, -2, "read_file");
     return 1;
+}
+
+esp_err_t lua_module_storage_register(void)
+{
+    return cap_lua_register_module("storage", luaopen_storage);
 }

@@ -5,18 +5,35 @@
  */
 #include "basic_demo_lua_modules.h"
 
-#include "cap_lua.h"
-
-#include "lua_module/lua_module_gpio.h"
-#include "lua_module/lua_module_led_strip.h"
+#include "lua_module_delay.h"
+#include "lua_module_event_publisher.h"
+#include "lua_module_gpio.h"
+#include "lua_module_led_strip.h"
+#include "lua_module_storage.h"
 
 esp_err_t basic_demo_lua_modules_register(void)
 {
-    static const cap_lua_module_t s_modules[] = {
-        {.name = "gpio", .open_fn = luaopen_gpio},
-        {.name = "led_strip", .open_fn = luaopen_led_strip},
-    };
+    esp_err_t err;
 
-    return cap_lua_register_modules(s_modules,
-                                    sizeof(s_modules) / sizeof(s_modules[0]));
+    err = lua_module_delay_register();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = lua_module_storage_register();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = lua_module_gpio_register();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = lua_module_led_strip_register();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return lua_module_event_publisher_register();
 }

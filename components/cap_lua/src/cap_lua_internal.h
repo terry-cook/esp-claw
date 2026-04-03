@@ -64,6 +64,3 @@ esp_err_t cap_lua_async_list_jobs(const char *status_filter,
 esp_err_t cap_lua_async_get_job(const char *job_id,
                                 char *output,
                                 size_t output_size);
-
-int luaopen_delay(lua_State *L);
-int luaopen_storage(lua_State *L);

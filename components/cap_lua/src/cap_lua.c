@@ -879,20 +879,6 @@ esp_err_t cap_lua_register_modules(const cap_lua_module_t *modules, size_t count
 
 esp_err_t cap_lua_register_builtin_modules(void)
 {
-    static const cap_lua_module_t builtin_modules[] = {
-        {.name = "delay", .open_fn = luaopen_delay},
-        {.name = "storage", .open_fn = luaopen_storage},
-    };
-
-    if (s_builtin_modules_registered) {
-        return ESP_OK;
-    }
-
-    ESP_RETURN_ON_ERROR(cap_lua_register_modules(builtin_modules,
-                                                 sizeof(builtin_modules) /
-                                                 sizeof(builtin_modules[0])),
-                        TAG,
-                        "Failed to register builtin Lua modules");
     s_builtin_modules_registered = true;
     return ESP_OK;
 }

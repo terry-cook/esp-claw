@@ -3,15 +3,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include "lua_module/lua_module_gpio.h"
+#include "lua_module_gpio.h"
 
 #include <string.h>
 
+#include "cap_lua.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "lauxlib.h"
 
-static gpio_mode_t gpio_mode_from_string(const char *mode)
+static gpio_mode_t lua_module_gpio_mode_from_string(const char *mode)
 {
     if (!mode || strcmp(mode, "input") == 0) {
         return GPIO_MODE_INPUT;
@@ -31,11 +32,11 @@ static gpio_mode_t gpio_mode_from_string(const char *mode)
     return GPIO_MODE_DISABLE;
 }
 
-static int lua_gpio_set_direction(lua_State *L)
+static int lua_module_gpio_set_direction(lua_State *L)
 {
     gpio_num_t pin = (gpio_num_t)luaL_checkinteger(L, 1);
     const char *mode_str = luaL_checkstring(L, 2);
-    gpio_mode_t mode = gpio_mode_from_string(mode_str);
+    gpio_mode_t mode = lua_module_gpio_mode_from_string(mode_str);
 
     if (mode == GPIO_MODE_DISABLE && strcmp(mode_str, "disable") != 0) {
         return luaL_error(L, "invalid gpio mode: %s", mode_str);
@@ -48,7 +49,7 @@ static int lua_gpio_set_direction(lua_State *L)
     return 0;
 }
 
-static int lua_gpio_set_level(lua_State *L)
+static int lua_module_gpio_set_level(lua_State *L)
 {
     gpio_num_t pin = (gpio_num_t)luaL_checkinteger(L, 1);
     uint32_t level = (uint32_t)luaL_checkinteger(L, 2);
@@ -60,7 +61,7 @@ static int lua_gpio_set_level(lua_State *L)
     return 0;
 }
 
-static int lua_gpio_get_level(lua_State *L)
+static int lua_module_gpio_get_level(lua_State *L)
 {
     gpio_num_t pin = (gpio_num_t)luaL_checkinteger(L, 1);
 
@@ -71,11 +72,16 @@ static int lua_gpio_get_level(lua_State *L)
 int luaopen_gpio(lua_State *L)
 {
     lua_newtable(L);
-    lua_pushcfunction(L, lua_gpio_set_direction);
+    lua_pushcfunction(L, lua_module_gpio_set_direction);
     lua_setfield(L, -2, "set_direction");
-    lua_pushcfunction(L, lua_gpio_set_level);
+    lua_pushcfunction(L, lua_module_gpio_set_level);
     lua_setfield(L, -2, "set_level");
-    lua_pushcfunction(L, lua_gpio_get_level);
+    lua_pushcfunction(L, lua_module_gpio_get_level);
     lua_setfield(L, -2, "get_level");
     return 1;
+}
+
+esp_err_t lua_module_gpio_register(void)
+{
+    return cap_lua_register_module("gpio", luaopen_gpio);
 }

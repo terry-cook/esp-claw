@@ -3,15 +3,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include "cap_lua_internal.h"
+#include "lua_module_delay.h"
 
 #include <stdint.h>
 
+#include "cap_lua.h"
 #include "lauxlib.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static int cap_lua_delay_ms(lua_State *L)
+static int lua_module_delay_sleep_ms(lua_State *L)
 {
     lua_Integer ms = luaL_checkinteger(L, 1);
 
@@ -26,7 +27,12 @@ static int cap_lua_delay_ms(lua_State *L)
 int luaopen_delay(lua_State *L)
 {
     lua_newtable(L);
-    lua_pushcfunction(L, cap_lua_delay_ms);
+    lua_pushcfunction(L, lua_module_delay_sleep_ms);
     lua_setfield(L, -2, "delay_ms");
     return 1;
+}
+
+esp_err_t lua_module_delay_register(void)
+{
+    return cap_lua_register_module("delay", luaopen_delay);
 }
