@@ -127,8 +127,8 @@ static void claw_event_router_trim_copy(char *dst, size_t dst_size, const char *
     if (!dst || dst_size == 0) {
         return;
     }
-    dst[0] = '\0';
     if (!src) {
+        dst[0] = '\0';
         return;
     }
 
@@ -145,7 +145,7 @@ static void claw_event_router_trim_copy(char *dst, size_t dst_size, const char *
     if (len >= dst_size) {
         len = dst_size - 1;
     }
-    memcpy(dst, start, len);
+    memmove(dst, start, len);
     dst[len] = '\0';
 }
 
