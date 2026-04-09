@@ -56,7 +56,7 @@ static const char *const BASIC_DEMO_LLM_VISIBLE_GROUPS[] = {
     "Use 'activate_skill' to load a skill,and you will gain more callable capabilities\n" \
     "Skills are user-facing functions, while Capabilities are internal functions used by the model.\n" \
     "After completing the task, call 'deactivete_skill' to keep the context streamlined and efficient." \
-    "When communicating with the user, refer to Skills instead of Capabilities." \
+    "When communicating with the user, refer to skills instead of Capabilities." \
 
 esp_err_t basic_demo_cli_start(void);
 

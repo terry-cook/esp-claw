@@ -1,6 +1,42 @@
 {
   "skills": [
     {
+      "id": "cap_im_feishu_skill",
+      "file": "cap_im_feishu_skill.md",
+      "title": "cap_im_feishu_skill",
+      "summary": "How to reply and send text, images, and files through Feishu capabilities.",
+      "cap_groups": [
+        "cap_im_feishu"
+      ]
+    },
+    {
+      "id": "cap_im_qq_skill",
+      "file": "cap_im_qq_skill.md",
+      "title": "cap_im_qq_skill",
+      "summary": "Reply in the QQ conversation or send local files back to QQ",
+      "cap_groups": [
+        "cap_im_qq"
+      ]
+    },
+    {
+      "id": "cap_im_tg_skill",
+      "file": "cap_im_tg_skill.md",
+      "title": "cap_im_tg_skill",
+      "summary": "How to reply and send text, images, and files through Telegram capabilities.",
+      "cap_groups": [
+        "cap_im_tg"
+      ]
+    },
+    {
+      "id": "cap_im_wechat_skill",
+      "file": "cap_im_wechat_skill.md",
+      "title": "cap_im_wechat_skill",
+      "summary": "How to send text and images through WeChat capabilities.",
+      "cap_groups": [
+        "cap_im_wechat"
+      ]
+    },
+    {
       "id": "cap_lua_skills",
       "file": "cap_lua_skills.md",
       "title": "cap_lua_skills",

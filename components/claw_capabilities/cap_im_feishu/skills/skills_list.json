@@ -1,0 +1,13 @@
+{
+  "skills": [
+    {
+      "id": "cap_im_feishu",
+      "file": "cap_im_feishu.md",
+      "title": "cap_im_feishu",
+      "summary": "How to reply and send text, images, and files through Feishu capabilities.",
+      "cap_groups": [
+        "cap_im_feishu"
+      ]
+    }
+  ]
+}

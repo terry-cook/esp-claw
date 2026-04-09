@@ -1,9 +1,9 @@
 {
   "skills": [
     {
-      "id": "cap_lua_skills",
-      "file": "cap_lua_skills.md",
-      "title": "cap_lua_skills",
+      "id": "cap_lua_run",
+      "file": "cap_lua_run.md",
+      "title": "cap_lua_run",
       "summary": "This Files describes how to correctly use Lua scripts.",
       "cap_groups": [
         "cap_lua"
