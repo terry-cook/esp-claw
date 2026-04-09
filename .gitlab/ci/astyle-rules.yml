@@ -22,34 +22,7 @@ not_formatted_permanent:
   # - Upstream source code we don't want to modify
   # - Generated files
   check: false
-  include:
-    - "components/audio/dac_audio/test/wave_1ch_16bits.c"
-    - "components/audio/dac_audio/test/wave_1ch_8bits.c"
-    - "components/audio/dac_audio/test/wave_2ch_16bits.c"
-    - "components/audio/dac_audio/test/wave_2ch_8bits.c"
-    - "components/audio/pwm_audio/test/wave_1ch_16bits.c"
-    - "components/audio/pwm_audio/test/wave_1ch_8bits.c"
-    - "components/audio/pwm_audio/test/wave_2ch_16bits.c"
-    - "components/audio/pwm_audio/test/wave_2ch_8bits.c"
-    - "components/bluetooth/ble_profiles/esp/ble_ota/proto-c/"
-    - "components/bluetooth/ble_profiles/esp/ble_ota/python/"
-    - "components/display/touch_panel/calibration/basic_painter/fonts/"
-    - "components/usb/usb_stream/test_apps/main/wave_1ch_16bits.c"
-    - "components/utilities/xz/"
-    - "docs/_static/esp32s2_adc_range_to_3300.patch"
-    - "docs/_static/esp32s2_adc_range_to_3300_v531.patch"
-    - "docs/_static/esp32s3_adc_range_to_3300.patch"
-    - "docs/_static/esp32s3_adc_range_to_3300_v531.patch"
-    - "docs/doxygen-known-warnings.txt"
-    - "docs/sphinx-known-warnings.txt"
-    - "examples/usb/device/usb_webcam/eyes_show/"
-    - "examples/ai/esp_dl/self_learning_classification/main/ui"
-    - "examples/usb/host/usb_camera_lcd_display/components/esp_painter/font/"
-    - "examples/usb/host/usb_camera_mic_spk/main/wave_1ch_16bits.c"
-    - "examples/robot/ragtime_panther/follower/main/ui/"
-    - "components/sensors/gas/bme690/bme69x.c"
-    - "components/sensors/gas/bme690/bme69x.h"
-    - "components/sensors/gas/bme690/bme69x_defs.h"
+
 
 docs:
   # Docs directory contains some .inc files, which are not C include files

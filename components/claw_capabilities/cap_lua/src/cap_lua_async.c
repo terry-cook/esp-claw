@@ -24,11 +24,11 @@ typedef struct {
     char job_id[9];
     char path[192];
     char *args_json;
+    char *summary;
     uint32_t timeout_ms;
     time_t created_at;
     time_t started_at;
     time_t finished_at;
-    char summary[CAP_LUA_OUTPUT_SIZE];
     TaskHandle_t task_handle;
 } cap_lua_job_record_t;
 
@@ -111,6 +111,16 @@ static int cap_lua_find_slot_by_id_locked(const char *job_id)
     return -1;
 }
 
+static void cap_lua_clear_slot(cap_lua_job_record_t *job)
+{
+    if (!job) {
+        return;
+    }
+    free(job->args_json);
+    free(job->summary);
+    memset(job, 0, sizeof(*job));
+}
+
 static void cap_lua_finish_job(cap_lua_job_ctx_t *ctx,
                                bool ok,
                                bool timed_out,
@@ -129,7 +139,8 @@ static void cap_lua_finish_job(cap_lua_job_ctx_t *ctx,
         s_jobs[ctx->slot].finished_at = time(NULL);
         s_jobs[ctx->slot].task_handle = NULL;
         if (summary && summary[0]) {
-            strlcpy(s_jobs[ctx->slot].summary, summary, sizeof(s_jobs[ctx->slot].summary));
+            free(s_jobs[ctx->slot].summary);
+            s_jobs[ctx->slot].summary = strdup(summary);
         }
     }
 
@@ -179,6 +190,8 @@ static void cap_lua_job_task(void *arg)
 
 esp_err_t cap_lua_async_init(void)
 {
+    int i;
+
     if (!s_job_lock) {
         s_job_lock = xSemaphoreCreateMutex();
     }
@@ -186,6 +199,9 @@ esp_err_t cap_lua_async_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    for (i = 0; i < CAP_LUA_ASYNC_MAX_JOBS; i++) {
+        cap_lua_clear_slot(&s_jobs[i]);
+    }
     memset(s_jobs, 0, sizeof(s_jobs));
     s_running_jobs = 0;
     s_runner_started = false;
@@ -254,7 +270,7 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
         return ESP_ERR_NO_MEM;
     }
 
-    memset(&s_jobs[slot], 0, sizeof(s_jobs[slot]));
+    cap_lua_clear_slot(&s_jobs[slot]);
     s_jobs[slot].used = true;
     s_jobs[slot].status = CAP_LUA_JOB_QUEUED;
     s_jobs[slot].created_at = job->created_at ? job->created_at : now;
@@ -263,7 +279,7 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
     if (ctx->args_json) {
         s_jobs[slot].args_json = strdup(ctx->args_json);
         if (!s_jobs[slot].args_json) {
-            memset(&s_jobs[slot], 0, sizeof(s_jobs[slot]));
+            cap_lua_clear_slot(&s_jobs[slot]);
             xSemaphoreGive(s_job_lock);
             free(ctx->args_json);
             free(ctx);
@@ -282,8 +298,7 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
                     CAP_LUA_ASYNC_PRIO,
                     &s_jobs[slot].task_handle) != pdPASS) {
         if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
-            free(s_jobs[slot].args_json);
-            memset(&s_jobs[slot], 0, sizeof(s_jobs[slot]));
+            cap_lua_clear_slot(&s_jobs[slot]);
             if (s_running_jobs > 0) {
                 s_running_jobs--;
             }
@@ -381,7 +396,7 @@ esp_err_t cap_lua_async_get_job(const char *job_id,
              s_jobs[slot].job_id,
              cap_lua_job_status_name(s_jobs[slot].status),
              s_jobs[slot].path,
-             s_jobs[slot].summary[0] ? s_jobs[slot].summary : "(empty)");
+             (s_jobs[slot].summary && s_jobs[slot].summary[0]) ? s_jobs[slot].summary : "(empty)");
     xSemaphoreGive(s_job_lock);
     return ESP_OK;
 }

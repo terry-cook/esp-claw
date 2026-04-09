@@ -134,50 +134,6 @@ class CustomApp(CMakeApp):
         shutil.rmtree(proj_path / 'components' / 'gen_bmgr_codes', ignore_errors=True)
         (proj_path / 'board_manager.defaults').unlink(missing_ok=True)
 
-    def _download_bmgr_component(self) -> bool:
-        """
-        Extract the esp_board_manager dependency from the manifest file and download it.
-        Returns True if successful, False otherwise.
-        """
-        if not all([yaml, download_project_dependencies, ManifestManager, ProjectRequirements]):
-            logger.warning('idf-component-manager is not available, cannot download board manager component')
-            return False
-
-        proj = Path(self.work_dir).absolute()
-        managed_path = proj / 'managed_components'
-        lock_path = proj / 'dependencies.lock'
-
-        bmgr_dep = self._find_bmgr_dependency()
-        if not bmgr_dep:
-            logger.warning(
-                'esp_board_manager dependency not found in project manifests under %s/main or %s/components/*',
-                proj,
-                proj,
-            )
-            return False
-
-        manifest_path, bmgr_key, bmgr_value = bmgr_dep
-
-        managed_path.mkdir(parents=True, exist_ok=True)
-
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_manifest = Path(temp_dir) / 'idf_component.yml'
-                with open(temp_manifest, 'w', encoding='utf-8') as f:
-                    yaml.dump({'dependencies': {bmgr_key: bmgr_value}}, f)
-
-                manifest = ManifestManager(str(temp_dir), 'temp').load()
-                download_project_dependencies(
-                    ProjectRequirements([manifest]),
-                    str(lock_path),
-                    str(managed_path),
-                )
-                logger.info('Successfully downloaded esp_board_manager component from %s to %s', manifest_path, managed_path)
-                return True
-        except Exception as e:
-            logger.error('Error downloading esp_board_manager component: %s', e)
-            return False
-
     def _pre_hook(self, board_name: str) -> None:
         logger.info(
             "Pre build hook for app '%s' at '%s' for target '%s', board '%s'",
@@ -194,17 +150,8 @@ class CustomApp(CMakeApp):
             logger.warning('IDF_PATH is not set; skip board manager config generation.')
             return
 
-        # Download board manager component if needed
-        bmgr_path = Path(self.work_dir).absolute() / 'managed_components' / 'espressif__esp_board_manager'
-        if not bmgr_path.exists():
-            logger.info('Board manager component not found, downloading...')
-            if not self._download_bmgr_component():
-                logger.error('Failed to download board manager component, cannot generate config')
-                return
-
         # Set environment variable for IDF_EXTRA_ACTIONS_PATH
         env = os.environ.copy()
-        env['IDF_EXTRA_ACTIONS_PATH'] = str(bmgr_path)
 
         subprocess.run(
             [

@@ -107,12 +107,16 @@ static int cap_lua_print_capture(lua_State *L)
 
         if (i > 1) {
             cap_lua_output_append(ctx, "\t", 1);
+            fwrite("\t", sizeof(char), 1, stdout);
         }
         cap_lua_output_append(ctx, text, len);
+        fwrite(text, sizeof(char), len, stdout);
         lua_pop(L, 1);
     }
 
     cap_lua_output_append(ctx, "\n", 1);
+    fwrite("\n", sizeof(char), 1, stdout);
+    fflush(stdout);
     return 0;
 }
 

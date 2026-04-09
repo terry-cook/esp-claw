@@ -1,51 +1,8 @@
 idf_component_register(
-    SRCS
-        "app_clawgent.c"
-        "main.c"
-        "basic_demo_cli.c"
-        "basic_demo_lua_modules.c"
-        "basic_demo_settings.c"
-        "basic_demo_wifi.c"
-        "config_http_server.c"
+    SRC_DIRS
+        "."
     INCLUDE_DIRS
         "."
-    REQUIRES
-        cap_cli
-        cap_files
-        cap_im_feishu
-        cap_im_qq
-        cap_im_tg
-        cap_im_wechat
-        cap_llm_inspect
-        cap_lua
-        cap_mcp_client
-        cap_mcp_server
-        cap_router_mgr
-        cap_session_mng
-        cap_scheduler
-        cap_skill
-        cap_time
-        cap_web_search
-        claw_event_router
-        claw_cap
-        claw_core
-        claw_memory
-        claw_skill
-        console
-        driver
-        esp_event
-        esp_http_server
-        esp_netif
-        esp_wifi
-        fatfs
-        json
-        nvs_flash
-        wear_levelling
-        lua_module_delay
-        lua_module_event_publisher
-        lua_module_gpio
-        lua_module_led_strip
-        lua_module_storage
     EMBED_TXTFILES
         "web/index.html"
         "web/styles.css"

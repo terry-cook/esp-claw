@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "argtable3/argtable3.h"
 #include "cap_lua.h"
@@ -37,6 +38,71 @@ static void print_lua_result(const char *result)
     }
 }
 
+static const char *lua_result_last_nonempty_line(const char *result, size_t *len_out)
+{
+    const char *line_start = NULL;
+    const char *cursor = NULL;
+    const char *last_start = NULL;
+    size_t last_len = 0;
+
+    if (len_out) {
+        *len_out = 0;
+    }
+    if (!result || !result[0]) {
+        return NULL;
+    }
+
+    line_start = result;
+    cursor = result;
+    while (1) {
+        if (*cursor == '\n' || *cursor == '\0') {
+            size_t line_len = (size_t)(cursor - line_start);
+            if (line_len > 0) {
+                last_start = line_start;
+                last_len = line_len;
+            }
+            if (*cursor == '\0') {
+                break;
+            }
+            line_start = cursor + 1;
+        }
+        cursor++;
+    }
+
+    if (len_out) {
+        *len_out = last_len;
+    }
+    return last_start;
+}
+
+static void print_lua_run_tail(const char *result, bool is_error)
+{
+    size_t line_len = 0;
+    const char *line = NULL;
+
+    if (!result || !result[0]) {
+        return;
+    }
+
+    if (!is_error) {
+        if (strcmp(result, "Lua script completed with no output.\n") == 0) {
+            printf("%s", result);
+            return;
+        }
+        line = strstr(result, "[output truncated]\n");
+        if (line) {
+            printf("%s", line);
+        }
+        return;
+    }
+
+    line = lua_result_last_nonempty_line(result, &line_len);
+    if (!line || line_len == 0) {
+        return;
+    }
+    printf("%.*s\n", (int)line_len, line);
+}
+
 static int lua_func(int argc, char **argv)
 {
     int nerrors = arg_parse(argc, argv, (void **)&lua_args);
@@ -44,6 +110,7 @@ static int lua_func(int argc, char **argv)
     char *result = NULL;
     esp_err_t err = ESP_OK;
     uint32_t timeout_ms = 0;
+    bool sync_run = false;
 
     if (nerrors != 0) {
         arg_print_errors(stderr, lua_args.end, argv[0]);
@@ -95,6 +162,7 @@ static int lua_func(int argc, char **argv)
                                    result,
                                    4096);
     } else if (lua_args.run->count) {
+        sync_run = true;
         if (!lua_args.path->count) {
             printf("'--run' requires '--path'\n");
             free(result);
@@ -125,13 +193,21 @@ static int lua_func(int argc, char **argv)
     }
 
     if (err != ESP_OK) {
-        print_lua_result(result);
+        if (sync_run) {
+            print_lua_run_tail(result, true);
+        } else {
+            print_lua_result(result);
+        }
         printf("lua command failed: %s\n", esp_err_to_name(err));
         free(result);
         return 1;
     }
 
-    print_lua_result(result);
+    if (sync_run) {
+        print_lua_run_tail(result, false);
+    } else {
+        print_lua_result(result);
+    }
     free(result);
     return 0;
 }

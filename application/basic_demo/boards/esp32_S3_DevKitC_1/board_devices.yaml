@@ -1,0 +1,53 @@
+version: 1.0.0
+# Devices Configuration
+devices:
+
+  - name: led_strip
+    chip: ws2812
+    type: custom
+    version: default
+    init_skip: true
+    dependencies:
+      espressif/led_strip:
+        version: "^3.0"
+        public: true
+    config:
+      max_leds: 1                  # Number of LEDs in the strip
+    peripherals:
+      - name: rmt_tx               # RMT TX peripheral used by the LED strip
+
+  # Example GPIO Button device configuration
+  - name: gpio_button_0            # The name of the device, must be unique
+    type: button                   # The type of the device
+    sub_type: gpio                 # Button sub type: "gpio", "adc_single", or "adc_multi"
+    config:
+      # GPIO Configuration
+      active_level: 0              # [TO_BE_CONFIRMED] Active level (0-low, 1-high) when button is pressed
+      enable_power_save: false     # Enable power save mode (default: false)
+      disable_pull: false          # Disable internal pull-up/pull-down (default: false)
+
+      # Button Timing Configuration
+      long_press_time: 2000        # Long press time in milliseconds (default: 2000)
+      short_press_time: 100        # Short press time in milliseconds (default: 100)
+
+      # Event Configuration (NEW - Easy button features)
+      events_cfg:
+        press_down: true           # Enable press down event (default: true)
+        press_up: true             # Enable press up event (default: true)
+        single_click: true         # Enable single click event (default: true)
+        double_click: true         # Enable double click event (default: true)
+        multi_click: false         # Enable multi click event (default: false)
+        click_counts: []           # Multi click counts configuration (default: [])
+                                  # eg: Set to [3, 4] means enable multi_click event with 3 and 4 counts
+        long_press_start: true     # Enable long press start event (default: true)
+        long_press_start_time: []  # Long press start time configuration in ms (default: [])
+                                  # eg: Set to [3000, 4000] means enable long_press_start event with 3 and 4 seconds
+        long_press_hold: false     # Enable long press hold event (default: false)
+        long_press_up: true        # Enable long press up event (default: true)
+        long_press_up_time: []     # Long press up time configuration in ms (default: [])
+        press_repeat: false        # Enable press repeat event (default: false)
+        press_repeat_done: false   # Enable press repeat done event (default: false)
+        press_end: false           # Enable press end event (default: false)
+
+    peripherals:
+      - name: gpio_button                 # [TO_BE_CONFIRMED] GPIO peripheral name

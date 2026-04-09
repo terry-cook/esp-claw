@@ -5,5 +5,4 @@ idf_component_register(
         "include"
     REQUIRES
         cap_lua
-        espressif__led_strip
 )

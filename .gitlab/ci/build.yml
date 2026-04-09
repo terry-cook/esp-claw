@@ -38,15 +38,16 @@
     # By configuring this macro, you can append the compiled configuration file.
     # For example, using "sdkconf.etc=default" specifies the default sdkconfig file.
     EXAMPLE_CONFIG: "="
+    EXAMPLE_TARGET: ""
     EXAMPLE_APPEND_ARGS: ""
     EXAMPLE_BOARD: "default"
     BUILD_RECURSIVE: "1"
   script:
-    - pip install idf_build_apps
+    - pip install idf_build_apps esp-bmgr-assist
     - |
       python .gitlab/ci/build_apps.py ${EXAMPLE_DIR} \
               --config ${EXAMPLE_CONFIG} \
-              -t all \
+              -t ${EXAMPLE_TARGET} \
               -r ${BUILD_RECURSIVE} \
               -vv \
               --board ${EXAMPLE_BOARD} \
@@ -62,25 +63,25 @@
 .build_idf_active_release_version:
   parallel:
     matrix:                               #  EOL date
-
       - IMAGE: espressif/idf:release-v5.5 # 2028-01-21
-
-
-# ESP-IDF 6.0 is currently in pre-release stage.
-
-.build_idf_active_release_version_with_pre_release:
-  parallel:
-    matrix:
-      - IMAGE: espressif/idf:release-v5.2
-      - IMAGE: espressif/idf:release-v5.3
-      - IMAGE: espressif/idf:release-v5.4
-      - IMAGE: espressif/idf:release-v5.5
-      - IMAGE: espressif/idf:release-v6.0
 
 build_application_basic_demo:
   extends:
     - .build_examples_template
     - .rules:build:application_basic_demo
-    - .build_idf_active_release_version
+  parallel:
+    matrix:
+      - IMAGE: espressif/idf:release-v5.5
+        EXAMPLE_BOARD: esp_SensairHalo
+        EXAMPLE_TARGET: esp32c5
+      - IMAGE: espressif/idf:release-v5.5
+        EXAMPLE_BOARD: esp_SensairShuttle
+        EXAMPLE_TARGET: esp32c5
+      - IMAGE: espressif/idf:release-v5.5
+        EXAMPLE_BOARD: esp_vocat_board_v1_2
+        EXAMPLE_TARGET: esp32s3
+      - IMAGE: espressif/idf:release-v5.5
+        EXAMPLE_BOARD: esp32_S3_DevKitC_1
+        EXAMPLE_TARGET: esp32s3
   variables:
     EXAMPLE_DIR: application/basic_demo

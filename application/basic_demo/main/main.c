@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "wear_levelling.h"
+#include "esp_board_manager_includes.h"
 
 static const char *TAG = "basic_demo";
 static basic_demo_settings_t s_settings = {0};
@@ -110,6 +111,7 @@ void app_main(void)
     ESP_ERROR_CHECK(init_nvs());
     ESP_ERROR_CHECK(basic_demo_settings_init());
     ESP_ERROR_CHECK(basic_demo_settings_load(&s_settings));
+    ESP_ERROR_CHECK(esp_board_manager_init());
     ESP_ERROR_CHECK(init_fatfs());
     ESP_ERROR_CHECK(basic_demo_wifi_init());
     ESP_ERROR_CHECK(config_http_server_init(BASIC_DEMO_FATFS_BASE_PATH));

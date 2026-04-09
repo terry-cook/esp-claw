@@ -224,16 +224,9 @@ static esp_err_t init_capabilities(const basic_demo_settings_t *settings)
                         TAG,
                         "Failed to register WeChat cap");
     ESP_RETURN_ON_ERROR(cap_files_register_group(), TAG, "Failed to register files cap");
-    // ESP_RETURN_ON_ERROR(basic_demo_lua_modules_register(),
-    //                     TAG,
-    //                     "Failed to register app Lua modules");
-    // ESP_RETURN_ON_ERROR(cap_lua_register_group(), TAG, "Failed to register Lua cap");
-    // ESP_RETURN_ON_ERROR(cap_mcp_client_register_group(),
-    //                     TAG,
-    //                     "Failed to register MCP client cap");
-    // ESP_RETURN_ON_ERROR(cap_mcp_server_register_group(),
-    //                     TAG,
-    //                     "Failed to register MCP server cap");
+    ESP_RETURN_ON_ERROR(basic_demo_lua_modules_register(),
+                        TAG,
+                        "Failed to register app Lua modules");
     ESP_RETURN_ON_ERROR(cap_scheduler_register_group(),
                         TAG,
                         "Failed to register scheduler cap");

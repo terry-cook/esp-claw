@@ -1,0 +1,143 @@
+version: 1.0.0
+# Devices Configuration
+devices:
+  - name: display_lcd
+    type: display_lcd
+    version: default
+    sub_type: parlio
+    chip: ili9341
+    dependencies:
+      espressif/esp_lcd_ili9341: "*"
+    config:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+      x_max: 284                            # [TO_BE_CONFIRMED] Horizontal resolution
+      y_max: 240                            # [TO_BE_CONFIRMED] Vertical resolution
+      need_reset: true                      # Whether to reset the LCD panel during initialization (default: true)
+      # dev_display_lcd_parlio_sub_config_t fields for Parlio communication
+      io_parl_config:
+        dc_gpio_num: 7                      # [IO] GPIO used for D/C line
+        clk_gpio_num: 1                     # [IO] GPIO used for CLK line
+        cs_gpio_num: 6                      # [IO] GPIO used for CS line
+        # GPIOs used for data lines (ESP_PARLIO_LCD_WIDTH_MAX == 8); 1-line SPI uses index 0 only, rest -1
+        data_gpio_nums: [0, -1, -1, -1, -1, -1, -1, -1]                      # [IO] GPIOs used for data lines
+        data_width: 1                       # Number of data lines, 1 (SPI) or 8 (I80)
+        pclk_hz: 40000000                   # [TO_BE_CONFIRMED] Frequency of pixel clock
+        clk_src: PARLIO_CLK_SRC_DEFAULT     # Clock source for the Parlio peripheral (parlio_clock_source_t)
+        max_transfer_bytes: 136320           # Maximum transfer size; determines internal DMA link length
+        dma_burst_size: 32                  # DMA burst size, in bytes
+        trans_queue_depth: 10               # Transaction queue size; larger queue, higher throughput
+        lcd_cmd_bits: 8                     # [TO_BE_CONFIRMED] Bit-width of LCD command
+        lcd_param_bits: 8                   # [TO_BE_CONFIRMED] Bit-width of LCD parameter
+        dc_levels:
+          dc_cmd_level: 0                   # [TO_BE_CONFIRMED] Level of DC line in CMD phase
+          dc_data_level: 1                  # [TO_BE_CONFIRMED] Level of DC line in DATA phase
+        flags:
+          # If set, high CS selects device; otherwise CS is low-active
+          cs_active_high: false
+      lcd_panel_config:
+        reset_gpio_num: -1
+        rgb_ele_order: LCD_RGB_ELEMENT_ORDER_RGB  # [TO_BE_CONFIRMED] RGB element order (default: RGB)
+        # Valid values:
+        # - LCD_RGB_ELEMENT_ORDER_RGB
+        # - LCD_RGB_ELEMENT_ORDER_BGR
+        data_endian: LCD_RGB_DATA_ENDIAN_LITTLE  # [TO_BE_CONFIRMED] Data endianness (default: LITTLE)
+        # Valid values:
+        # - LCD_RGB_DATA_ENDIAN_BIG
+        # - LCD_RGB_DATA_ENDIAN_LITTLE
+        bits_per_pixel: 16                    # [TO_BE_CONFIRMED] Bits per pixel (default: 16)
+        flags:
+          reset_active_high: true             # Reset pin active level (default: false)
+        vendor_config: ""
+
+
+  # Touch Panel Configuration
+  - name: lcd_touch
+    chip: cst816s
+    type: lcd_touch_i2c
+    version: default
+    dependencies:
+      espressif/esp_lcd_touch_cst816s: "*"
+    config:
+      # esp_lcd_panel_io_i2c_config_t fields for touch communication
+      io_i2c_config:
+        dev_addr: 0x15                    # CST816S I2C address (different from default 0x5A)
+        peripherals:
+          - name: i2c_master                   # I2C peripheral for touch communication
+
+      # esp_lcd_touch_config_t fields for touch configuration
+      touch_config:
+        x_max: 284                        # Maximum X coordinate (BSP_LCD_H_RES)
+        y_max: 240                        # Maximum Y coordinate (BSP_LCD_V_RES)
+        int_gpio_num: -1                   # Interrupt GPIO (BSP_LCD_TOUCH_INT)
+        flags:
+          swap_xy: true                  # Swap X and Y coordinates (default: false)
+          mirror_x: false                 # Mirror X coordinates (default: false)
+          mirror_y: true                 # Mirror Y coordinates (default: false)
+
+  - name: touch_button
+    chip: bs8112
+    type: custom
+    version: default
+    dependencies:
+      touch_ic_bs8112a3:
+        version: "^0.1"
+    peripherals:
+      - name: i2c_master                   # I2C peripheral for touch communication
+    config:
+      irq_pin: 4
+
+  - name: camera
+    type: camera
+    sub_type: spi
+    config:
+      spi_config:
+        intf: ESP_CAM_CTLR_SPI_CAM_INTF_SPI
+        # SPI CAM data I/O mode (SPI interface only supports 1-bit): ESP_CAM_CTLR_SPI_CAM_IO_MODE_1BIT / _2BIT
+        io_mode: ESP_CAM_CTLR_SPI_CAM_IO_MODE_1BIT
+        spi_port: 1                         # [TO_BE_CONFIRMED] SPI port
+        spi_cs_pin: 27                      # [IO] SPI CS pin
+        spi_sclk_pin: 25                    # [IO] SPI SCLK pin
+        spi_data0_io_pin: 23                # [IO] SPI data0 I/O pin
+        spi_data1_io_pin: -1                # [IO] SPI data1 I/O pin
+        reset_pin: -1                       # [IO] SPI interface camera sensor reset pin
+        pwdn_pin: -1                       # [IO] SPI interface camera sensor power down pin
+        xclk_source: ESP_CAM_SENSOR_XCLK_LEDC
+        xclk_freq: 24000000                # [TO_BE_CONFIRMED] XCLK frequency in Hz (default: 20MHz)
+        xclk_pin: 24                       # [IO] XCLK pin
+        xclk_ledc_cfg:
+          timer: 0                          # [TO_BE_CONFIRMED] The timer source of channel
+          clk_cfg: LEDC_AUTO_CLK            # [TO_BE_CONFIRMED] LEDC source clock from ledc_clk_cfg_t
+          channel: 0                        # [TO_BE_CONFIRMED] LEDC channel used for XCLK
+    peripherals:
+      - name: i2c_master                   # Must match a periph_i2c name; provides SCCB i2c_handle to esp_video
+        frequency: 100000                   # SCCB I2C frequency (Hz)
+
+  - name: audio_adc
+    chip: internal
+    type: audio_codec
+    config:
+      adc_enabled: true
+      dac_enabled: false
+      adc_local_cfg:
+        channel_list: [4]          # required
+        sample_rate_hz: 16000
+        max_store_buf_size: 1024
+        conv_frame_size: 256
+        unit_id: ADC_UNIT_1
+        atten: ADC_ATTEN_DB_0
+
+  - name: audio_dac
+    chip: internal
+    type: audio_codec
+    version: default
+    config:
+      dac_enabled: true
+    peripherals:
+      - name: i2s_audio_out
+        tx_aux_out_io: 10
+        tx_aux_out_invert: true
+      - name: gpio_pa_control
+        gain: 6
+        active_level: 1
