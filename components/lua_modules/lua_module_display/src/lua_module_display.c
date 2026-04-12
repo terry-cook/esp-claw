@@ -84,7 +84,7 @@ static void *lua_display_check_lightuserdata_arg(lua_State *L, int index, const 
  * Screen lifecycle
  * ---------------------------------------------------------------------- */
 
-static int lua_display_create_screen(lua_State *L)
+static int lua_display_init(lua_State *L)
 {
     esp_lcd_panel_handle_t panel_handle =
         (esp_lcd_panel_handle_t)lua_display_check_lightuserdata_arg(
@@ -97,19 +97,19 @@ static int lua_display_create_screen(lua_State *L)
 
     esp_err_t err = display_hal_create(panel_handle, io_handle, lcd_width, lcd_height);
     if (err != ESP_OK) {
-        return luaL_error(L, "display create_screen failed: %s", esp_err_to_name(err));
+        return luaL_error(L, "display init failed: %s", esp_err_to_name(err));
     }
 
     lua_pushboolean(L, 1);
     return 1;
 }
 
-static int lua_display_destroy_screen(lua_State *L)
+static int lua_display_deinit(lua_State *L)
 {
     (void)L;
     esp_err_t err = display_hal_destroy();
     if (err != ESP_OK) {
-        return luaL_error(L, "display destroy_screen failed: %s", esp_err_to_name(err));
+        return luaL_error(L, "display deinit failed: %s", esp_err_to_name(err));
     }
 
     lua_pushboolean(L, 1);
@@ -1184,10 +1184,10 @@ int luaopen_display(lua_State *L)
 {
     lua_newtable(L);
 
-    lua_pushcfunction(L, lua_display_create_screen);
-    lua_setfield(L, -2, "create_screen");
-    lua_pushcfunction(L, lua_display_destroy_screen);
-    lua_setfield(L, -2, "destroy_screen");
+    lua_pushcfunction(L, lua_display_init);
+    lua_setfield(L, -2, "init");
+    lua_pushcfunction(L, lua_display_deinit);
+    lua_setfield(L, -2, "deinit");
 
     lua_pushcfunction(L, lua_display_width);
     lua_setfield(L, -2, "width");

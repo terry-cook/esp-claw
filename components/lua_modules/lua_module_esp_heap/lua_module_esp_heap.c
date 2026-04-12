@@ -58,13 +58,6 @@ static void lua_module_esp_heap_push_caps_constants(lua_State *L)
     lua_setfield(L, -2, "RETENTION");
 }
 
-static int lua_module_esp_heap_caps(lua_State *L)
-{
-    lua_newtable(L);
-    lua_module_esp_heap_push_caps_constants(L);
-    return 1;
-}
-
 static int lua_module_esp_heap_get_info(lua_State *L)
 {
     lua_Integer caps_value = luaL_optinteger(L, 1, MALLOC_CAP_DEFAULT);
@@ -173,7 +166,6 @@ static int lua_module_esp_heap_get_current_task(lua_State *L)
 int luaopen_esp_heap(lua_State *L)
 {
     static const luaL_Reg funcs[] = {
-        {"caps", lua_module_esp_heap_caps},
         {"get_info", lua_module_esp_heap_get_info},
         {"get_task_watermarks", lua_module_esp_heap_get_task_watermarks},
         {"get_current_task", lua_module_esp_heap_get_current_task},
@@ -182,6 +174,9 @@ int luaopen_esp_heap(lua_State *L)
 
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
+    lua_newtable(L);
+    lua_module_esp_heap_push_caps_constants(L);
+    lua_setfield(L, -2, "caps");
     return 1;
 }
 

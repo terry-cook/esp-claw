@@ -668,7 +668,7 @@ esp_err_t basic_demo_cli_start(void)
     ESP_LOGI(TAG, "Starting console REPL");
 
     repl_config.prompt = "basic_demo> ";
-    repl_config.task_stack_size = 8192;
+    repl_config.task_stack_size = 4096;
     repl_config.max_cmdline_length = 512;
 
 #if CONFIG_ESP_CONSOLE_UART_DEFAULT || CONFIG_ESP_CONSOLE_UART_CUSTOM

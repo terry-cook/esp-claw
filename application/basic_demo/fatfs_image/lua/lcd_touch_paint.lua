@@ -9,9 +9,9 @@ if not panel_handle then
     return
 end
 
-local ok, err = pcall(display.create_screen, panel_handle, io_handle, width, height)
+local ok, err = pcall(display.init, panel_handle, io_handle, width, height)
 if not ok then
-    print("[lcd_touch_paint] ERROR: create_screen failed: " .. tostring(err))
+    print("[lcd_touch_paint] ERROR: init failed: " .. tostring(err))
     return
 end
 
@@ -20,7 +20,7 @@ local screen_created = true
 local function cleanup()
     if screen_created then
         pcall(display.end_frame)
-        pcall(display.destroy_screen)
+        pcall(display.deinit)
         screen_created = false
     end
 end
@@ -29,7 +29,7 @@ width = display.width()
 height = display.height()
 
 if width <= 0 or height <= 0 then
-    print("[lcd_touch_paint] ERROR: invalid display size after create_screen")
+    print("[lcd_touch_paint] ERROR: invalid display size after init")
     cleanup()
     return
 end

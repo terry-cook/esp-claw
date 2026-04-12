@@ -396,6 +396,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     char resolved_path[192];
     cJSON *timeout_item = NULL;
     char *args_json = NULL;
+    char request_path[192] = {0};
     uint32_t timeout_ms = 0;
     cap_lua_async_job_t job = {0};
     char job_id[16] = {0};
@@ -415,6 +416,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
         snprintf(output, output_size, "Error: path must be a .lua file under %s", s_lua_base_dir);
         return ESP_ERR_INVALID_ARG;
     }
+    strlcpy(request_path, path ? path : resolved_path, sizeof(request_path));
 
     timeout_item = cJSON_GetObjectItem(root, "timeout_ms");
     if (timeout_item && (!cJSON_IsNumber(timeout_item) || timeout_item->valueint <= 0)) {
@@ -452,7 +454,7 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
         return err;
     }
 
-    snprintf(output, output_size, "Queued Lua job %s for %s", job_id, path);
+    snprintf(output, output_size, "Queued Lua job %s for %s", job_id, request_path);
     return ESP_OK;
 }
 

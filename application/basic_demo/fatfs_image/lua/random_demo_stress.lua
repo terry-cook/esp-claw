@@ -2,7 +2,7 @@ local delay = require("delay")
 local esp_heap = require("esp_heap")
 
 local LUA_ROOT = "/fatfs/data/lua"
-local caps = esp_heap.caps()
+local caps = esp_heap.caps
 
 local iterations = (args and args.iterations) or 20
 local pause_ms = (args and args.pause_ms) or 200

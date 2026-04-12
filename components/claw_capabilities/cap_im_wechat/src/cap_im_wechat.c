@@ -20,12 +20,14 @@
 #include "claw_event_router.h"
 #include "esp_crt_bundle.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "mbedtls/aes.h"
@@ -119,6 +121,17 @@ typedef struct {
     size_t context_idx;
     cap_im_wechat_qr_state_t qr;
 } cap_im_wechat_state_t;
+
+static UBaseType_t cap_im_wechat_task_memory_caps(void)
+{
+#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+        return MALLOC_CAP_SPIRAM;
+    }
+#endif
+
+    return MALLOC_CAP_INTERNAL;
+}
 
 static cap_im_wechat_state_t s_wechat = {
     .base_url = CAP_IM_WECHAT_DEFAULT_BASE_URL,
@@ -1471,7 +1484,7 @@ static void cap_im_wechat_poll_task(void *arg)
     }
 
     s_wechat.poll_task = NULL;
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }
 
 static esp_err_t cap_im_wechat_send_message_json(cJSON *msg_root)
@@ -1993,12 +2006,14 @@ static esp_err_t cap_im_wechat_gateway_start(void)
     }
 
     s_wechat.stop_requested = false;
-    ok = xTaskCreate(cap_im_wechat_poll_task,
-                     "wechat_poll",
-                     CAP_IM_WECHAT_TASK_STACK,
-                     NULL,
-                     CAP_IM_WECHAT_TASK_PRIO,
-                     &s_wechat.poll_task);
+    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_poll_task,
+                                         "wechat_poll",
+                                         CAP_IM_WECHAT_TASK_STACK,
+                                         NULL,
+                                         CAP_IM_WECHAT_TASK_PRIO,
+                                         &s_wechat.poll_task,
+                                         tskNO_AFFINITY,
+                                         cap_im_wechat_task_memory_caps());
     if (ok != pdPASS) {
         s_wechat.poll_task = NULL;
         return ESP_FAIL;
@@ -2164,12 +2179,14 @@ esp_err_t cap_im_wechat_qr_login_start(const char *account_id, bool force)
     }
 
     if (!s_wechat.qr_task) {
-        ok = xTaskCreate(cap_im_wechat_qr_task,
-                         "wechat_qr",
-                         CAP_IM_WECHAT_TASK_STACK,
-                         NULL,
-                         CAP_IM_WECHAT_TASK_PRIO,
-                         &s_wechat.qr_task);
+        ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_qr_task,
+                                             "wechat_qr",
+                                             CAP_IM_WECHAT_TASK_STACK,
+                                             NULL,
+                                             CAP_IM_WECHAT_TASK_PRIO,
+                                             &s_wechat.qr_task,
+                                             tskNO_AFFINITY,
+                                             cap_im_wechat_task_memory_caps());
         if (ok != pdPASS) {
             s_wechat.qr.active = false;
             s_wechat.qr_task = NULL;
@@ -2583,5 +2600,5 @@ static void cap_im_wechat_qr_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }

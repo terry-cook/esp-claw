@@ -97,7 +97,7 @@ static void memory_monitor_task(void *arg)
         size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
         ESP_LOGI(TAG, "Memory: internal_free=%u bytes, internal_min_free=%u bytes, psram_free=%u bytes",
                  (unsigned)internal_free, (unsigned)internal_min, (unsigned)psram_free);
-        // print_task_stack_info();
+        print_task_stack_info();
     }
 }
 
@@ -131,6 +131,6 @@ void app_main(void)
 
 #if BASIC_DEMO_ENABLE_MEM_LOG
     /* Start memory monitor: print internal free, min free, PSRAM free every 20s */
-    xTaskCreate(memory_monitor_task, "mem_mon", 8192, NULL, 1, NULL);
+    xTaskCreate(memory_monitor_task, "mem_mon", 4096, NULL, 1, NULL);
 #endif
 }

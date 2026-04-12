@@ -10,9 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
@@ -44,6 +46,12 @@ static SemaphoreHandle_t s_job_lock;
 static cap_lua_job_record_t s_jobs[CAP_LUA_ASYNC_MAX_JOBS];
 static size_t s_running_jobs;
 static bool s_runner_started;
+
+static UBaseType_t cap_lua_task_memory_caps(void)
+{
+    /* Lua async jobs touch FATFS/flash-backed files, so their stacks must stay internal. */
+    return MALLOC_CAP_INTERNAL;
+}
 
 static const char *cap_lua_job_status_name(cap_lua_job_status_t status)
 {
@@ -159,7 +167,7 @@ static void cap_lua_job_task(void *arg)
     bool timed_out = false;
 
     if (!ctx) {
-        vTaskDelete(NULL);
+        vTaskDeleteWithCaps(NULL);
         return;
     }
 
@@ -168,7 +176,7 @@ static void cap_lua_job_task(void *arg)
         cap_lua_finish_job(ctx, false, false, "failed to allocate output buffer");
         free(ctx->args_json);
         free(ctx);
-        vTaskDelete(NULL);
+        vTaskDeleteWithCaps(NULL);
         return;
     }
 
@@ -185,7 +193,7 @@ static void cap_lua_job_task(void *arg)
     free(output);
     free(ctx->args_json);
     free(ctx);
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }
 
 esp_err_t cap_lua_async_init(void)
@@ -223,6 +231,8 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
                                size_t job_id_out_size)
 {
     cap_lua_job_ctx_t *ctx = NULL;
+    char submitted_job_id[sizeof(ctx->job_id)] = {0};
+    char submitted_path[sizeof(ctx->path)] = {0};
     int slot = -1;
     time_t now = time(NULL);
 
@@ -240,6 +250,8 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
 
     cap_lua_generate_job_id(ctx->job_id, sizeof(ctx->job_id));
     strlcpy(ctx->path, job->path, sizeof(ctx->path));
+    strlcpy(submitted_job_id, ctx->job_id, sizeof(submitted_job_id));
+    strlcpy(submitted_path, ctx->path, sizeof(submitted_path));
     ctx->timeout_ms = job->timeout_ms;
     if (job->args_json) {
         ctx->args_json = strdup(job->args_json);
@@ -291,12 +303,14 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
     s_running_jobs++;
     xSemaphoreGive(s_job_lock);
 
-    if (xTaskCreate(cap_lua_job_task,
-                    "cap_lua_async",
-                    CAP_LUA_ASYNC_STACK,
-                    ctx,
-                    CAP_LUA_ASYNC_PRIO,
-                    &s_jobs[slot].task_handle) != pdPASS) {
+    if (xTaskCreatePinnedToCoreWithCaps(cap_lua_job_task,
+                                        "cap_lua_async",
+                                        CAP_LUA_ASYNC_STACK,
+                                        ctx,
+                                        CAP_LUA_ASYNC_PRIO,
+                                        &s_jobs[slot].task_handle,
+                                        tskNO_AFFINITY,
+                                        cap_lua_task_memory_caps()) != pdPASS) {
         if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
             cap_lua_clear_slot(&s_jobs[slot]);
             if (s_running_jobs > 0) {
@@ -316,10 +330,10 @@ esp_err_t cap_lua_async_submit(const cap_lua_async_job_t *job,
     }
 
     if (job_id_out && job_id_out_size > 0) {
-        strlcpy(job_id_out, ctx->job_id, job_id_out_size);
+        strlcpy(job_id_out, submitted_job_id, job_id_out_size);
     }
 
-    ESP_LOGI(TAG, "Queued Lua async job %s for %s", ctx->job_id, ctx->path);
+    ESP_LOGI(TAG, "Queued Lua async job %s for %s", submitted_job_id, submitted_path);
     return ESP_OK;
 }
 

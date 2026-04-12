@@ -295,7 +295,7 @@ esp_err_t app_clawgent_start(const basic_demo_settings_t *settings)
     claw_core_config_t core_config = {0};
     claw_event_router_config_t router_config = {
         .rules_path = BASIC_DEMO_AUTOMATION_RULES_PATH,
-        .task_stack_size = 12 * 1024,
+        .task_stack_size = 6 * 1024,
         .task_priority = 5,
         .task_core = tskNO_AFFINITY,
         .core_submit_timeout_ms = 1000,
@@ -358,7 +358,7 @@ esp_err_t app_clawgent_start(const basic_demo_settings_t *settings)
     core_config.system_prompt = BASIC_DEMO_SYSTEM_PROMPT;
     core_config.append_session_turn = claw_memory_append_session_turn_callback;
     core_config.call_cap = claw_cap_call_from_core;
-    core_config.task_stack_size = 8 * 1024;
+    core_config.task_stack_size = 6 * 1024;
     core_config.task_priority = 5;
     core_config.task_core = tskNO_AFFINITY;
     core_config.max_tool_iterations = 10;

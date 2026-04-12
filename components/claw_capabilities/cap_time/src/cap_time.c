@@ -28,7 +28,7 @@ static const char *TAG = "cap_time";
 #define CAP_TIME_MIN_VALID_EPOCH 1704067200
 #define CAP_TIME_DEFAULT_DISCONNECTED_RETRY_MS 5000
 #define CAP_TIME_DEFAULT_SYNC_RETRY_MS        30000
-#define CAP_TIME_SYNC_TASK_STACK_SIZE          6144
+#define CAP_TIME_SYNC_TASK_STACK_SIZE          4096
 #define CAP_TIME_SYNC_TASK_PRIORITY               5
 
 static const char *s_month_names[] = {

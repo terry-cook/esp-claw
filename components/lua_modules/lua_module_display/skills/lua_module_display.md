@@ -3,7 +3,7 @@
 This skill describes how to correctly use `display` when writing Lua scripts.
 
 `display` is a low-level drawing module. It can:
-- Create and destroy the LCD drawing context
+- Initialize and deinitialize the LCD drawing context
 - Draw text, lines, rectangles, circles, arcs, ellipses, triangles, and round rectangles
 - Draw raw RGB565 bitmaps
 - Draw JPEG and PNG images from memory or files
@@ -20,10 +20,10 @@ local display = require("display")
 local panel_handle, io_handle, width, height =
     board_manager.get_display_lcd_params("display_lcd")
 
-display.create_screen(panel_handle, io_handle, width, height)
+display.init(panel_handle, io_handle, width, height)
 ```
 
-After `display.create_screen(...)` succeeds:
+After `display.init(...)` succeeds:
 - `display.width()` returns the current screen width
 - `display.height()` returns the current screen height
 - Most drawing APIs can be used
@@ -32,7 +32,7 @@ When finished:
 
 ```lua
 pcall(display.end_frame)
-pcall(display.destroy_screen)
+pcall(display.deinit)
 ```
 
 ## Important rules
@@ -47,9 +47,9 @@ pcall(display.destroy_screen)
 
 ## Screen lifecycle
 
-### `display.create_screen(panel_handle, io_handle, lcd_width, lcd_height)`
+### `display.init(panel_handle, io_handle, lcd_width, lcd_height)`
 
-Creates the drawing context.
+Initializes the drawing context.
 
 - `panel_handle`: lightuserdata, usually from `board_manager.get_display_lcd_params(...)`
 - `io_handle`: lightuserdata
@@ -58,9 +58,9 @@ Creates the drawing context.
 - Returns `true` on success
 - Raises a Lua error on failure
 
-### `display.destroy_screen()`
+### `display.deinit()`
 
-Destroys the drawing context.
+Deinitializes the drawing context.
 
 - Returns `true` on success
 - Raises a Lua error on failure
@@ -390,12 +390,12 @@ Returns:
 
 For normal screen rendering:
 1. Use `board_manager.get_display_lcd_params("display_lcd")`
-2. Call `display.create_screen(...)`
+2. Call `display.init(...)`
 3. Call `display.begin_frame(...)`
 4. Draw text, shapes, or images
 5. Call `display.present()` or `display.present_rect(...)`
 6. Call `display.end_frame()`
-7. Call `display.destroy_screen()` before exit
+7. Call `display.deinit()` before exit
 
 ## Example
 
@@ -406,7 +406,7 @@ local display = require("display")
 local panel_handle, io_handle, width, height =
     bm.get_display_lcd_params("display_lcd")
 
-display.create_screen(panel_handle, io_handle, width, height)
+display.init(panel_handle, io_handle, width, height)
 
 display.begin_frame({ clear = true, r = 12, g = 18, b = 28 })
 
@@ -429,5 +429,5 @@ display.draw_text_aligned(0, display.height() - 24, display.width(), 20, "frame 
 
 display.present()
 display.end_frame()
-display.destroy_screen()
+display.deinit()
 ```

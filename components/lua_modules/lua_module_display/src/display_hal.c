@@ -57,6 +57,7 @@ typedef struct {
 static display_hal_state_t s_state;
 
 static void display_hal_clear_clip_locked(void);
+static esp_err_t display_hal_clear_io_callbacks_locked(void);
 static bool display_hal_flush_done_isr(esp_lcd_panel_io_handle_t panel_io,
                                        esp_lcd_panel_io_event_data_t *edata,
                                        void *user_ctx);
@@ -151,6 +152,8 @@ fail:
 esp_err_t display_hal_destroy(void)
 {
     esp_err_t ret = display_hal_lock();
+    SemaphoreHandle_t flush_done_to_delete = NULL;
+    SemaphoreHandle_t lock_to_delete = NULL;
 
     if (ret != ESP_OK) {
         return ret;
@@ -158,6 +161,14 @@ esp_err_t display_hal_destroy(void)
 
     if (s_state.flush_in_flight) {
         ret = display_hal_wait_flush_done_locked(pdMS_TO_TICKS(DISPLAY_HAL_FLUSH_TIMEOUT_MS));
+        if (ret != ESP_OK) {
+            display_hal_unlock();
+            return ret;
+        }
+    }
+
+    if (s_state.display_callbacks_registered) {
+        ret = display_hal_clear_io_callbacks_locked();
         if (ret != ESP_OK) {
             display_hal_unlock();
             return ret;
@@ -173,8 +184,12 @@ esp_err_t display_hal_destroy(void)
         s_state.painter = NULL;
     }
 
+    flush_done_to_delete = s_state.display_flush_done;
+    lock_to_delete = s_state.lock;
+
     s_state.panel = NULL;
     s_state.io = NULL;
+    s_state.display_callbacks_registered = false;
     s_state.width = 0;
     s_state.height = 0;
     s_state.framebuffer_bytes = 0;
@@ -190,8 +205,18 @@ esp_err_t display_hal_destroy(void)
     s_state.clip_y = 0;
     s_state.clip_width = 0;
     s_state.clip_height = 0;
+    s_state.display_flush_done = NULL;
+    s_state.lock = NULL;
 
-    display_hal_unlock();
+    if (lock_to_delete) {
+        xSemaphoreGive(lock_to_delete);
+    }
+    if (flush_done_to_delete) {
+        vSemaphoreDelete(flush_done_to_delete);
+    }
+    if (lock_to_delete) {
+        vSemaphoreDelete(lock_to_delete);
+    }
     return ESP_OK;
 }
 
@@ -202,6 +227,21 @@ static void display_hal_clear_clip_locked(void)
     s_state.clip_y = 0;
     s_state.clip_width = s_state.width;
     s_state.clip_height = s_state.height;
+}
+
+static esp_err_t display_hal_clear_io_callbacks_locked(void)
+{
+    const esp_lcd_panel_io_callbacks_t callbacks = {0};
+
+    if (!s_state.io) {
+        s_state.display_callbacks_registered = false;
+        return ESP_OK;
+    }
+
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_register_event_callbacks(s_state.io, &callbacks, NULL),
+                        TAG, "clear flush callback failed");
+    s_state.display_callbacks_registered = false;
+    return ESP_OK;
 }
 
 static uint16_t *display_hal_get_draw_framebuffer_locked(void)
