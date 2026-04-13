@@ -717,7 +717,7 @@ static esp_err_t cap_scheduler_write_snapshot_json(const cap_scheduler_snapshot_
                                                    char *output,
                                                    size_t output_size)
 {
-    cap_scheduler_entry_t entry = {0};
+    cap_scheduler_entry_t *entry = NULL;
     cJSON *root = NULL;
     char *rendered = NULL;
     esp_err_t err;
@@ -726,16 +726,22 @@ static esp_err_t cap_scheduler_write_snapshot_json(const cap_scheduler_snapshot_
         return ESP_ERR_INVALID_ARG;
     }
 
-    entry.occupied = true;
-    entry.item = snapshot->item;
-    entry.status = snapshot->status;
-    entry.next_fire_ms = snapshot->next_fire_ms;
-    entry.last_fire_ms = snapshot->last_fire_ms;
-    entry.last_success_ms = snapshot->last_success_ms;
-    entry.run_count = snapshot->run_count;
-    entry.missed_count = snapshot->missed_count;
-    entry.last_error_code = snapshot->last_error_code;
-    err = cap_scheduler_entry_to_json(&entry, true, &root);
+    entry = calloc(1, sizeof(*entry));
+    if (!entry) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    entry->occupied = true;
+    entry->item = snapshot->item;
+    entry->status = snapshot->status;
+    entry->next_fire_ms = snapshot->next_fire_ms;
+    entry->last_fire_ms = snapshot->last_fire_ms;
+    entry->last_success_ms = snapshot->last_success_ms;
+    entry->run_count = snapshot->run_count;
+    entry->missed_count = snapshot->missed_count;
+    entry->last_error_code = snapshot->last_error_code;
+    err = cap_scheduler_entry_to_json(entry, true, &root);
+    free(entry);
     if (err != ESP_OK) {
         return err;
     }
@@ -1166,9 +1172,24 @@ esp_err_t cap_scheduler_list_json(char *buf, size_t size)
 
 esp_err_t cap_scheduler_get_state_json(const char *id, char *buf, size_t size)
 {
-    cap_scheduler_snapshot_t snapshot = {0};
-    ESP_RETURN_ON_ERROR(cap_scheduler_get_snapshot(id, &snapshot), TAG, "snapshot not found");
-    return cap_scheduler_write_snapshot_json(&snapshot, buf, size);
+    cap_scheduler_snapshot_t *snapshot = NULL;
+    esp_err_t err;
+
+    snapshot = calloc(1, sizeof(*snapshot));
+    if (!snapshot) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    err = cap_scheduler_get_snapshot(id, snapshot);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "snapshot not found: %s", esp_err_to_name(err));
+        free(snapshot);
+        return err;
+    }
+
+    err = cap_scheduler_write_snapshot_json(snapshot, buf, size);
+    free(snapshot);
+    return err;
 }
 
 esp_err_t cap_scheduler_handle_time_sync(void)
@@ -1246,21 +1267,35 @@ static esp_err_t cap_scheduler_execute_add(const char *input_json,
                                            char *output,
                                            size_t output_size)
 {
-    cap_scheduler_item_t item = {0};
+    cap_scheduler_item_t *item = NULL;
     const char *default_timezone = NULL;
     esp_err_t err;
 
     (void)ctx;
 
+    item = calloc(1, sizeof(*item));
+    if (!item) {
+        return ESP_ERR_NO_MEM;
+    }
+
     default_timezone = s_cap_scheduler.default_timezone[0] ?
                        s_cap_scheduler.default_timezone : CAP_SCHEDULER_DEFAULT_TIMEZONE;
-    ESP_RETURN_ON_ERROR(cap_scheduler_parse_add_input(input_json,
-                                                      &item,
-                                                      default_timezone),
-                        TAG,
-                        "scheduler add input invalid");
-    ESP_RETURN_ON_ERROR(cap_scheduler_add(&item), TAG, "scheduler add failed");
-    err = cap_scheduler_get_state_json(item.id, output, output_size);
+    err = cap_scheduler_parse_add_input(input_json, item, default_timezone);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "scheduler add input invalid: %s", esp_err_to_name(err));
+        goto cleanup;
+    }
+
+    err = cap_scheduler_add(item);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "scheduler add failed: %s", esp_err_to_name(err));
+        goto cleanup;
+    }
+
+    err = cap_scheduler_get_state_json(item->id, output, output_size);
+
+cleanup:
+    free(item);
     return err;
 }
 

@@ -2466,27 +2466,43 @@ esp_err_t claw_event_router_delete_rule(const char *id)
 
 esp_err_t claw_event_router_add_rule_json(const char *rule_json)
 {
-    claw_event_router_rule_t rule = {0};
-    esp_err_t err = claw_event_router_parse_rule_json(rule_json, &rule);
+    claw_event_router_rule_t *rule = NULL;
+    esp_err_t err;
 
+    rule = calloc(1, sizeof(*rule));
+    if (!rule) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    err = claw_event_router_parse_rule_json(rule_json, rule);
     if (err != ESP_OK) {
+        free(rule);
         return err;
     }
-    err = claw_event_router_add_rule(&rule);
-    claw_event_router_free_rule(&rule);
+    err = claw_event_router_add_rule(rule);
+    claw_event_router_free_rule(rule);
+    free(rule);
     return err;
 }
 
 esp_err_t claw_event_router_update_rule_json(const char *rule_json)
 {
-    claw_event_router_rule_t rule = {0};
-    esp_err_t err = claw_event_router_parse_rule_json(rule_json, &rule);
+    claw_event_router_rule_t *rule = NULL;
+    esp_err_t err;
 
+    rule = calloc(1, sizeof(*rule));
+    if (!rule) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    err = claw_event_router_parse_rule_json(rule_json, rule);
     if (err != ESP_OK) {
+        free(rule);
         return err;
     }
-    err = claw_event_router_update_rule(&rule);
-    claw_event_router_free_rule(&rule);
+    err = claw_event_router_update_rule(rule);
+    claw_event_router_free_rule(rule);
+    free(rule);
     return err;
 }
 
