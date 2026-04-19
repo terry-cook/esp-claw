@@ -6,6 +6,7 @@
 #include "cap_lua_internal.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,10 +50,6 @@ typedef struct {
 
 static SemaphoreHandle_t s_job_lock;
 static cap_lua_job_record_t s_jobs[CAP_LUA_ASYNC_MAX_JOBS];
-/* Per-slot binary semaphore signalled when the slot's job reaches a terminal
- * state. Lives outside the record struct because the struct is memset on slot
- * recycle; the sem itself is created once at init and reused for every job
- * that lands in this slot, drained before each new submit. */
 static SemaphoreHandle_t s_slot_terminal_sem[CAP_LUA_ASYNC_MAX_JOBS];
 static size_t s_running_jobs;
 static bool s_runner_started;
@@ -198,8 +195,6 @@ static void cap_lua_finish_job(cap_lua_job_ctx_t *ctx,
             ctx->slot < CAP_LUA_ASYNC_MAX_JOBS &&
             s_jobs[ctx->slot].used &&
             strcmp(s_jobs[ctx->slot].job_id, ctx->job_id) == 0) {
-        /* Order matters: stop request takes precedence over timeout, so a
-         * race between the two is reported as STOPPED. */
         stopped = s_jobs[ctx->slot].stop_requested;
         if (!stopped && error_msg && strstr(error_msg, "execution timed out") != NULL) {
             timed_out = true;
@@ -355,16 +350,14 @@ static bool cap_lua_wait_for_terminal(int slot, uint32_t wait_ms)
     if (!sem) {
         return false;
     }
-    /* The sem give happens after finish_job releases s_job_lock, so a fast
-     * concurrent submit can drain the slot's status back to QUEUED before
-     * the give lands. Always verify against the live status; the sem only
-     * shortens the wait. */
     xSemaphoreTake(sem, pdMS_TO_TICKS(wait_ms));
     return cap_lua_slot_is_terminal(slot);
 }
 
-/* Mark slot stopped under lock, then wait outside lock for terminal status. */
-static esp_err_t cap_lua_stop_slot_and_wait(int slot, uint32_t wait_ms, bool *out_was_running)
+static esp_err_t cap_lua_stop_slot_and_wait(int slot,
+                                            const char *expected_job_id,
+                                            uint32_t wait_ms,
+                                            bool *out_was_running)
 {
     bool was_running = false;
 
@@ -372,6 +365,12 @@ static esp_err_t cap_lua_stop_slot_and_wait(int slot, uint32_t wait_ms, bool *ou
         return ESP_ERR_TIMEOUT;
     }
     if (slot < 0 || slot >= CAP_LUA_ASYNC_MAX_JOBS || !s_jobs[slot].used) {
+        xSemaphoreGive(s_job_lock);
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (expected_job_id && expected_job_id[0] &&
+            strncmp(s_jobs[slot].job_id, expected_job_id,
+                    sizeof(s_jobs[slot].job_id)) != 0) {
         xSemaphoreGive(s_job_lock);
         return ESP_ERR_NOT_FOUND;
     }
@@ -400,9 +399,6 @@ static esp_err_t cap_lua_stop_slot_and_wait(int slot, uint32_t wait_ms, bool *ou
     return ESP_OK;
 }
 
-/* Internal worker holding the actual submit logic. cap_lua_async_submit is a
- * thin wrapper that calls this twice when the post-lock recheck loses a race
- * against another submitter, so the caller never sees a transient EBUSY. */
 static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
                                            char *job_id_out,
                                            size_t job_id_out_size,
@@ -445,7 +441,6 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
         return ESP_ERR_INVALID_STATE;
     }
 
-    /* --- Pre-flight: detect conflicts; honor replace=true by stopping them --- */
     while (true) {
         int conflict_slot = -1;
         char conflict_reason[64] = {0};
@@ -511,12 +506,12 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
             return ESP_ERR_INVALID_STATE;
         }
 
-        /* replace=true: stop conflicting slot and wait, then re-check loop */
         ESP_LOGI(TAG, "Replacing conflicting job '%s' (id=%s) due to %s",
                  conflict_name[0] ? conflict_name : "(unnamed)",
                  conflict_id, conflict_reason);
         bool was_running = false;
         esp_err_t stop_err = cap_lua_stop_slot_and_wait(conflict_slot,
+                                                        conflict_id,
                                                         CAP_LUA_STOP_WAIT_DEFAULT_MS,
                                                         &was_running);
         if (stop_err == ESP_ERR_TIMEOUT) {
@@ -539,10 +534,8 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
             }
             return stop_err;
         }
-        /* loop again to re-detect; another conflict might exist (e.g. name AND exclusive) */
     }
 
-    /* --- Allocate ctx and slot --- */
     cap_lua_job_ctx_t *ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
         return ESP_ERR_NO_MEM;
@@ -569,11 +562,6 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
         return ESP_ERR_TIMEOUT;
     }
 
-    /* Race window: between releasing the pre-flight lock and re-acquiring it
-     * here, another submitter may have filled a slot under the same name or
-     * exclusive group. Re-check ALL invariants under lock so the
-     * single-instance / exclusive-group guarantee can never be broken by
-     * concurrent submits from different tasks (LLM, CLI, event router). */
     if (s_running_jobs >= CAP_LUA_ASYNC_MAX_CONCURRENT) {
         xSemaphoreGive(s_job_lock);
         free(ctx->args_json);
@@ -612,11 +600,6 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
         xSemaphoreGive(s_job_lock);
         free(ctx->args_json);
         free(ctx);
-        /* Signal the wrapper to retry once: the inner pre-flight already
-         * did the stop-and-wait, but a different submitter slipped in. A
-         * single bounded retry absorbs the race without ever asking the
-         * LLM to redo it. The wrapper drops this flag on the second pass
-         * so we cannot oscillate indefinitely under sustained contention. */
         if (out_recheck_lost_race) {
             *out_recheck_lost_race = true;
         }
@@ -639,8 +622,6 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
     }
 
     cap_lua_clear_slot(&s_jobs[slot]);
-    /* Drain any leftover terminal signal from the previous occupant so that
-     * the next waiter only sees this job's transition. */
     if (s_slot_terminal_sem[slot]) {
         xSemaphoreTake(s_slot_terminal_sem[slot], 0);
     }
@@ -852,10 +833,14 @@ esp_err_t cap_lua_async_stop_job(const char *id_or_name,
         wait_ms = CAP_LUA_STOP_WAIT_DEFAULT_MS;
     }
     bool was_running = false;
-    esp_err_t err = cap_lua_stop_slot_and_wait(slot, wait_ms, &was_running);
+    esp_err_t err = cap_lua_stop_slot_and_wait(slot, job_id, wait_ms, &was_running);
 
     if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        const char *status_name = cap_lua_job_status_name(s_jobs[slot].status);
+        const char *status_name = "gone";
+        if (s_jobs[slot].used &&
+                strncmp(s_jobs[slot].job_id, job_id, sizeof(job_id)) == 0) {
+            status_name = cap_lua_job_status_name(s_jobs[slot].status);
+        }
         if (err == ESP_OK && was_running) {
             snprintf(output, output_size, "OK: stopped job %s (status=%s)",
                      job_id, status_name);
@@ -880,7 +865,10 @@ esp_err_t cap_lua_async_stop_all_jobs(const char *exclusive_filter,
                                       char *output,
                                       size_t output_size)
 {
-    int targets[CAP_LUA_ASYNC_MAX_JOBS];
+    struct {
+        int slot;
+        char job_id[CAP_LUA_JOB_ID_LEN];
+    } targets[CAP_LUA_ASYNC_MAX_JOBS];
     int target_count = 0;
 
     if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
@@ -895,7 +883,10 @@ esp_err_t cap_lua_async_stop_all_jobs(const char *exclusive_filter,
                 continue;
             }
         }
-        targets[target_count++] = i;
+        targets[target_count].slot = i;
+        strlcpy(targets[target_count].job_id, s_jobs[i].job_id,
+                sizeof(targets[target_count].job_id));
+        target_count++;
     }
     xSemaphoreGive(s_job_lock);
 
@@ -906,8 +897,22 @@ esp_err_t cap_lua_async_stop_all_jobs(const char *exclusive_filter,
     int stopped = 0;
     int timed_out = 0;
     for (int t = 0; t < target_count; t++) {
+        if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            continue;
+        }
+        bool same_job = (s_jobs[targets[t].slot].used &&
+                         strncmp(s_jobs[targets[t].slot].job_id,
+                                 targets[t].job_id,
+                                 sizeof(targets[t].job_id)) == 0);
+        xSemaphoreGive(s_job_lock);
+        if (!same_job) {
+            continue;
+        }
         bool was_running = false;
-        esp_err_t err = cap_lua_stop_slot_and_wait(targets[t], wait_ms, &was_running);
+        esp_err_t err = cap_lua_stop_slot_and_wait(targets[t].slot,
+                                                   targets[t].job_id,
+                                                   wait_ms,
+                                                   &was_running);
         if (err == ESP_OK) {
             stopped++;
         } else if (err == ESP_ERR_TIMEOUT) {
@@ -1020,6 +1025,28 @@ size_t cap_lua_async_collect_active_snapshots(cap_lua_async_job_snapshot_t *out,
         out[count].started_at = s_jobs[i].started_at;
         out[count].finished_at = s_jobs[i].finished_at;
         count++;
+    }
+    xSemaphoreGive(s_job_lock);
+    return count;
+}
+
+size_t cap_lua_async_active_count(void)
+{
+    size_t count = 0;
+
+    if (!s_job_lock) {
+        return 0;
+    }
+    if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(200)) != pdTRUE) {
+        /* Fail closed: callers (e.g. deactivate guard) MUST treat unknown as
+         * non-zero, otherwise contention on the job lock would silently allow
+         * the dangerous operation through. */
+        return SIZE_MAX;
+    }
+    for (int i = 0; i < CAP_LUA_ASYNC_MAX_JOBS; i++) {
+        if (s_jobs[i].used && !cap_lua_status_is_terminal(s_jobs[i].status)) {
+            count++;
+        }
     }
     xSemaphoreGive(s_job_lock);
     return count;

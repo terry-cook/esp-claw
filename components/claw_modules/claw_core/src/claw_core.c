@@ -82,9 +82,6 @@ typedef struct {
     SemaphoreHandle_t response_lock;
     claw_core_pending_response_t *pending_head;
     claw_core_pending_response_t *pending_tail;
-    /* Cooperative-cancel slot for the request currently held by the worker.
-     * `inflight_request_id` is non-zero only between request dequeue and
-     * worker completion; protected by `inflight_lock`. */
     SemaphoreHandle_t inflight_lock;
     uint32_t inflight_request_id;
     volatile bool inflight_abort;
@@ -183,9 +180,6 @@ static char *build_session_assistant_text(const char *tool_summary, const char *
     return combined;
 }
 
-/* CSV utilities for the per-request observer summary. Both buffers are
- * stack-allocated in claw_core_task; the helpers below append a token and
- * silently drop on overflow (diagnostic data is best-effort). */
 #define CLAW_CORE_OBS_CSV_MAX 384
 
 static bool obs_csv_contains(const char *csv, const char *name)
@@ -1141,8 +1135,6 @@ static void claw_core_task(void *arg)
             continue;
         }
 
-        /* Publish the in-flight request id so claw_core_cancel_request can
-         * target it. inflight_abort starts cleared each round. */
         if (xSemaphoreTake(s_core.inflight_lock, portMAX_DELAY) == pdTRUE) {
             s_core.inflight_request_id = request.view.request_id;
             s_core.inflight_abort = false;
@@ -1288,8 +1280,6 @@ static void claw_core_task(void *arg)
         }
 
 finish_request:
-        /* Disarm BEFORE pushing the response so a subsequent cancel for an
-         * unrelated request never trips a stale flag here. */
         claw_llm_http_disarm_abort();
         if (xSemaphoreTake(s_core.inflight_lock, portMAX_DELAY) == pdTRUE) {
             bool was_cancelled = s_core.inflight_abort;
@@ -1531,9 +1521,6 @@ esp_err_t claw_core_cancel_request(uint32_t request_id)
     if (!s_core.initialized) {
         return ESP_ERR_INVALID_STATE;
     }
-    /* request_id == 0 means "cancel whatever is in flight"; useful for a
-     * panic-stop hot key. Otherwise we only flip the flag when the in-flight
-     * id matches, so stale cancels are no-ops. */
     if (xSemaphoreTake(s_core.inflight_lock, pdMS_TO_TICKS(200)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }

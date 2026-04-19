@@ -21,16 +21,11 @@ static const char *TAG = "llm_http";
 
 #define CLAW_LLM_HTTP_RB_INITIAL_CAP 4096
 
-/* Cooperative-abort slot. Owner is set so that a stale flag from a different
- * task is ignored (defensive — claw_core serializes LLM calls already). */
 static volatile bool *s_abort_flag = NULL;
 static TaskHandle_t   s_abort_owner = NULL;
 
 void claw_llm_http_arm_abort(volatile bool *flag)
 {
-    /* Single-owner invariant: claw_core serializes LLM calls. Catching a
-     * concurrent arm here turns a silent abort-slot overwrite into a fatal
-     * panic so the assumption can't quietly rot. */
     TaskHandle_t self = xTaskGetCurrentTaskHandle();
     assert(s_abort_flag == NULL || s_abort_owner == self);
     s_abort_flag = flag;
@@ -144,9 +139,6 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
     response_buffer_t *buffer = (response_buffer_t *)evt->user_data;
 
-    /* Poll on every callback so abort latency is bounded by the next event
-     * (header parsed, chunk arrived, finish, etc.). Returning a non-OK status
-     * forces esp_http_client_perform to bail out. */
     if (abort_requested()) {
         return ESP_FAIL;
     }

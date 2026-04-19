@@ -104,22 +104,7 @@ esp_err_t claw_event_router_init(const claw_event_router_config_t *config);
 esp_err_t claw_event_router_start(void);
 esp_err_t claw_event_router_stop(void);
 esp_err_t claw_event_router_reload(void);
-/*
- * Mark a queued event as cancelled. The router task will discard it on
- * dequeue without invoking any actions. Returns ESP_OK if the event was
- * found and tagged, ESP_ERR_NOT_FOUND if no such pending event exists
- * (already dispatched, never queued, or evicted from the tracking table).
- *
- * Cancellation is queue-only: events that have already entered process_event
- * cannot be cancelled here — use claw_core_cancel_request for the LLM round
- * or lua_stop_async_job for an async script that the router spawned.
- */
 esp_err_t claw_event_router_cancel_event(const char *event_id);
-/*
- * Bulk-cancel all queued events that match the optional filters. Pass NULL
- * (or empty string) for either filter to skip that constraint. Returns the
- * number of pending entries marked, written to *out_cancelled when non-NULL.
- */
 esp_err_t claw_event_router_purge_queue(const char *event_type_filter,
                                         const char *source_cap_filter,
                                         size_t *out_cancelled);

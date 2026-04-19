@@ -22,10 +22,6 @@ static const char *TAG = "claw_cap";
 #define CLAW_CAP_DEFAULT_MAX_GROUPS       4
 #define CLAW_CAP_UNLOAD_POLL_MS          20
 
-/* Soft cap on the description string published to the LLM tools array. Keeps
- * the request body bounded and protects against accidental verbose copy that
- * could push the body past upstream parser limits (observed as HTTP 400 on
- * some gateways). Tune cautiously: shrinking too much hurts tool selection. */
 #define CLAW_CAP_TOOL_DESCRIPTION_MAX 256
 
 typedef struct {

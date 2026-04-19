@@ -45,6 +45,36 @@ menu "Default Wi-Fi Settings"
         help
             Default Wi-Fi password used to populate basic demo settings.
 
+    config BASIC_DEMO_WIFI_AP_SSID_PREFIX
+        string "Provisioning AP SSID prefix"
+        default "esp-claw"
+        help
+            Prefix used to build the unique provisioning AP SSID. The full
+            SSID is "<prefix>-<MAC[3..5]>" (e.g. esp-claw-84AEE5).
+
+    config BASIC_DEMO_WIFI_AP_CHANNEL
+        int "Provisioning AP channel"
+        range 1 13
+        default 1
+        help
+            Channel used by the provisioning SoftAP.
+
+    config BASIC_DEMO_WIFI_AP_MAX_CONN
+        int "Provisioning AP max connections"
+        range 1 10
+        default 4
+        help
+            Maximum number of concurrent stations on the provisioning AP.
+
+    config BASIC_DEMO_WIFI_MAX_RETRY
+        int "STA max retries before AP fallback"
+        range 1 20
+        default 5
+        help
+            After this many consecutive STA connection failures the device
+            falls back to pure AP mode and waits for the user to provision
+            new credentials.
+
 endmenu
 
 menu "Default LLM Settings"

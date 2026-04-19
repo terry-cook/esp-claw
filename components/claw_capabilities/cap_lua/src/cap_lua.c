@@ -230,6 +230,11 @@ static esp_err_t cap_lua_group_init(void)
     return ESP_OK;
 }
 
+size_t cap_lua_get_active_async_job_count(void)
+{
+    return cap_lua_async_active_count();
+}
+
 static esp_err_t cap_lua_group_start(void)
 {
     return cap_lua_async_start();
@@ -483,9 +488,6 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
     }
     strlcpy(request_path, path ? path : resolved_path, sizeof(request_path));
 
-    /* Pre-check that the script actually exists before queuing. Without this
-     * the job is happily accepted, the async task starts, immediately fails
-     * to load, and the LLM has already reported success to the user. */
     {
         struct stat script_stat;
         if (stat(resolved_path, &script_stat) != 0) {
@@ -515,9 +517,6 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
         replace = cJSON_IsTrue(replace_item);
     }
 
-    /* Copy strings owned by `root` into the job struct BEFORE cJSON_Delete /
-     * cap_lua_build_args_json — both can recycle the freed string buffers and
-     * leave us holding garbage. */
     strlcpy(job.path, resolved_path, sizeof(job.path));
     if (name && name[0]) {
         strlcpy(job.name, name, sizeof(job.name));
@@ -557,10 +556,6 @@ static esp_err_t cap_lua_run_script_async_execute(const char *input_json,
         return err;
     }
 
-    /* Block briefly so the tool result reflects whether the job actually
-     * launched or already failed during script load. Wakes immediately on
-     * terminal transition; otherwise reports the live status (typically
-     * RUNNING) once the budget elapses. */
     cap_lua_job_status_t settle_status = CAP_LUA_JOB_RUNNING;
     char settle_summary[128] = {0};
     cap_lua_async_wait_settle(job_id, 150, &settle_status, settle_summary, sizeof(settle_summary));
@@ -640,10 +635,6 @@ static esp_err_t cap_lua_stop_all_async_jobs_execute(const char *input_json,
 
     (void)ctx;
 
-    /* Distinguish "no args -> stop everything" from "garbage JSON -> reject".
-     * The latter must be a hard error because this API has destructive side
-     * effects on every running async job, and silently ignoring a malformed
-     * payload would mass-stop jobs that the caller never intended to touch. */
     if (input_json && input_json[0]) {
         root = cJSON_Parse(input_json);
         if (!root) {
@@ -1148,17 +1139,12 @@ void cap_lua_honesty_observe_completion(const claw_core_completion_summary_t *su
     if (!strstr(providers, "Lua Async Jobs")) {
         return;
     }
-    /* If a stop / replace tool was actually invoked this turn, the reply is
-     * truthful regardless of phrasing. */
     const char *tools = summary->tool_calls_csv ? summary->tool_calls_csv : "";
     if (strstr(tools, "lua_stop_async_job") ||
         strstr(tools, "lua_stop_all_async_jobs") ||
         strstr(tools, "lua_run_script_async")) {
         return;
     }
-    /* Pattern-match the assistant's reply against typical "I stopped it"
-     * phrases in both English and Chinese. Keep this list small and explicit
-     * to avoid false positives like "if you want to cancel, tell me". */
     static const char *const claim_keywords[] = {
         "已取消", "已停止", "已关闭", "已清除", "取消了", "停止了", "关掉了", "关闭了",
         "stopped", "cancelled", "canceled", "cleared",

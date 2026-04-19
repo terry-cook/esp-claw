@@ -9,9 +9,13 @@
 #endif
 #include "basic_demo_settings.h"
 #include "basic_demo_wifi.h"
+#include "cap_lua.h"
+#include "captive_dns.h"
+#include "claw_skill.h"
 #include "config_http_server.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include <stdint.h>
 #include "time.h"
 #include "esp_vfs_fat.h"
 #include "freertos/task.h"
@@ -28,12 +32,51 @@ const char *basic_demo_fatfs_base_path = "/fatfs";
 
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 
+static esp_err_t cap_lua_run_deactivate_guard(const char *session_id,
+                                              const char *skill_id,
+                                              char *reason_out,
+                                              size_t reason_size)
+{
+    (void)session_id;
+    (void)skill_id;
+
+    size_t active = cap_lua_get_active_async_job_count();
+    if (active == 0) {
+        return ESP_OK;
+    }
+    if (reason_out && reason_size > 0) {
+        if (active == SIZE_MAX) {
+            snprintf(reason_out, reason_size,
+                     "Lua async runner is busy (lock contended). "
+                     "Call lua_list_async_jobs to confirm, then "
+                     "lua_stop_all_async_jobs before retrying deactivate_skill.");
+        } else {
+            snprintf(reason_out, reason_size,
+                     "%u Lua async job(s) still running. "
+                     "Call lua_stop_all_async_jobs (or lua_stop_async_job per id/name) "
+                     "first, then retry deactivate_skill.",
+                     (unsigned)active);
+        }
+    }
+    return ESP_ERR_INVALID_STATE;
+}
+
 static void on_wifi_state_changed(bool connected, void *user_ctx)
 {
     (void)user_ctx;
 
+    const char *ap_ssid = basic_demo_wifi_is_ap_active()
+                          ? basic_demo_wifi_get_ap_ssid()
+                          : NULL;
+
+    ESP_LOGI(TAG, "Wi-Fi state: sta_connected=%d ap_active=%d mode=%s ap_ssid=%s",
+             connected,
+             basic_demo_wifi_is_ap_active(),
+             basic_demo_wifi_get_mode_string(),
+             ap_ssid ? ap_ssid : "(none)");
+
 #if defined(CONFIG_BASIC_DEMO_ENABLE_EMOTE)
-    esp_err_t err = app_expression_emote_set_network_state(connected);
+    esp_err_t err = app_expression_emote_set_status(connected, ap_ssid);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to update network emote: %s", esp_err_to_name(err));
     }
@@ -166,18 +209,38 @@ void app_main(void)
     ESP_ERROR_CHECK(config_http_server_init(basic_demo_fatfs_base_path));
     ESP_ERROR_CHECK(basic_demo_wifi_register_state_callback(on_wifi_state_changed, NULL));
 
-    if (basic_demo_wifi_start(s_settings.wifi_ssid, s_settings.wifi_password) == ESP_OK) {
-        ESP_ERROR_CHECK(config_http_server_start());
-        if (basic_demo_wifi_wait_connected(30000) == ESP_OK) {
-            ESP_LOGI(TAG, "Wi-Fi ready: %s", basic_demo_wifi_get_ip());
-        } else {
-            ESP_LOGW(TAG, "Wi-Fi connection timed out");
-        }
+    esp_err_t wifi_err = basic_demo_wifi_start(s_settings.wifi_ssid, s_settings.wifi_password);
+    if (wifi_err != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi start failed: %s", esp_err_to_name(wifi_err));
     } else {
-        ESP_LOGW(TAG, "Continuing without Wi-Fi");
+        ESP_ERROR_CHECK(config_http_server_start());
+        if (captive_dns_start() != ESP_OK) {
+            ESP_LOGW(TAG, "Captive DNS could not start, portal pop-up disabled");
+        }
+
+        if (s_settings.wifi_ssid[0] != '\0') {
+            if (basic_demo_wifi_wait_connected(30000) == ESP_OK) {
+                ESP_LOGI(TAG, "Wi-Fi STA ready: %s", basic_demo_wifi_get_ip());
+            } else {
+                ESP_LOGW(TAG, "STA could not connect, dropped to AP fallback");
+            }
+        }
+
+        ESP_LOGW(TAG,
+                 "*** Provisioning portal: SSID=\"%s\" (open) IP=%s URL=http://%s/ ***",
+                 basic_demo_wifi_get_ap_ssid(),
+                 basic_demo_wifi_get_ap_ip(),
+                 basic_demo_wifi_get_ap_ip());
     }
 
     ESP_ERROR_CHECK(app_claw_start(&s_settings));
+
+    esp_err_t guard_err = claw_skill_register_deactivate_guard("cap_lua_run",
+                                                               cap_lua_run_deactivate_guard);
+    if (guard_err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to register cap_lua_run deactivate guard: %s",
+                 esp_err_to_name(guard_err));
+    }
 
 #if BASIC_DEMO_ENABLE_MEM_LOG
     /* Start memory monitor: print internal free, min free, PSRAM free every 20s */

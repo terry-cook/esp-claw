@@ -75,10 +75,8 @@ typedef struct {
     size_t rule_count;
     claw_event_router_result_t last_result;
     claw_event_router_config_t config;
-    /* Tracks events that have been queued but not yet picked up by the
-     * router task. Protected by the existing recursive `mutex`. */
     claw_event_router_pending_t pending[CLAW_EVENT_ROUTER_PENDING_TABLE_SIZE];
-    size_t pending_dropped; /* monotonic counter for diagnostics */
+    size_t pending_dropped;
 } claw_event_router_runtime_t;
 
 static claw_event_router_runtime_t s_runtime = {
@@ -230,18 +228,6 @@ static void claw_event_router_unlock(void)
     xSemaphoreGiveRecursive(s_runtime.mutex);
 }
 
-/* --- Pending-event tracking ---------------------------------------------
- * The router queue holds claw_event_t copies but does not allow indexed
- * access, so a parallel slot table records every event that has been
- * enqueued but not yet picked up by the worker. Slots are reclaimed in
- * FIFO order on dequeue or when the table is full and we have to make
- * room for a fresh event (the oldest non-cancelled entry is evicted).
- *
- * All helpers here assume the caller already holds the runtime mutex,
- * EXCEPT pending_track / pending_take_for_event_id / pending_filter,
- * which acquire it themselves.
- */
-
 static int pending_find_slot_locked(const char *event_id)
 {
     if (!event_id || !event_id[0]) {
@@ -265,10 +251,6 @@ static int pending_alloc_slot_locked(void)
             return i;
         }
     }
-    /* Table full: evict the first non-cancelled entry. The router task
-     * will then process its event without a tracking record (still safe,
-     * just not cancellable). Cancelled entries are preserved so that the
-     * pending cancel still triggers when their event reaches the head. */
     for (int i = 0; i < (int)CLAW_EVENT_ROUTER_PENDING_TABLE_SIZE; i++) {
         if (!s_runtime.pending[i].cancelled) {
             oldest = i;
@@ -311,8 +293,6 @@ static void pending_track(const claw_event_t *event)
     claw_event_router_unlock();
 }
 
-/* Called by the router task right after dequeue. Returns true when the
- * event was tagged cancelled and should be dropped. */
 static bool pending_take_for_event_id(const char *event_id)
 {
     bool cancelled = false;
@@ -2085,9 +2065,6 @@ esp_err_t claw_event_router_init(const claw_event_router_config_t *config)
 
     uint32_t queue_len = config && config->event_queue_len ? config->event_queue_len
                                                             : CLAW_EVENT_ROUTER_DEFAULT_QUEUE_LEN;
-    /* Pending tracking is fixed-size; if the queue can hold more in-flight
-     * events than the table can track, cancel requests start getting silently
-     * evicted. Fail fast at config time instead of at runtime. */
     if (queue_len > CLAW_EVENT_ROUTER_PENDING_TABLE_SIZE) {
         ESP_LOGE(TAG, "event_queue_len=%u exceeds pending table size %u",
                  (unsigned)queue_len,
@@ -2274,9 +2251,6 @@ esp_err_t claw_event_router_publish(const claw_event_t *event)
     if (err != ESP_OK) {
         return err;
     }
-    /* Track BEFORE enqueue so the router task on the other core can never
-     * dequeue and process the event before we have a record of it. If
-     * xQueueSend fails we roll the slot back. */
     pending_track(&cloned);
     if (xQueueSend(s_runtime.event_queue, &cloned, pdMS_TO_TICKS(1000)) != pdTRUE) {
         (void)pending_take_for_event_id(cloned.event_id);

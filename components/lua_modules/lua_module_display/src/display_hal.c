@@ -156,18 +156,6 @@ esp_err_t display_hal_create(esp_lcd_panel_handle_t panel_handle,
     ESP_GOTO_ON_FALSE(lcd_width > 0 && lcd_height > 0, ESP_ERR_INVALID_ARG,
                       fail, TAG, "invalid lcd size");
 
-    /* Idempotent re-create: if a previous Lua script left the HAL fully
-     * initialized with identical handles and geometry, return success without
-     * churning resources. This is the happy path when the cap_lua
-     * exclusive("display") arbiter swaps scripts of the same UI stack.
-     *
-     * The "fully initialized" guard matters because the fail: epilogue below
-     * only rolls back the swap buffer, not the basic fields / semaphore /
-     * callbacks. Without this guard a partial-init failure (e.g. semaphore
-     * alloc failed in a previous call) would leave the basic fields matching
-     * and trick the next call into a no-op success while the underlying sync
-     * objects are missing. We therefore require every resource the HAL hands
-     * out to be present before declaring a no-op. */
     if (s_state.panel == panel_handle &&
             s_state.io == io_handle &&
             s_state.panel_if == panel_if &&
@@ -181,9 +169,6 @@ esp_err_t display_hal_create(esp_lcd_panel_handle_t panel_handle,
         goto fail;
     }
 
-    /* Defensive cleanup: if a prior session left a swap buffer behind (e.g. a
-     * Lua script crashed before display.deinit), free it before reallocating
-     * to avoid leaks that would accumulate across runs. */
     if (s_state.submit_swap_buffer) {
         ESP_LOGW(TAG, "display_hal_create: freeing leftover swap buffer (%u px)",
                  (unsigned)s_state.submit_swap_buffer_pixels);

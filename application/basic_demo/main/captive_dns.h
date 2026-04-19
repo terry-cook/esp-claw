@@ -5,18 +5,14 @@
  */
 #pragma once
 
-#include <stdbool.h>
-
 #include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-esp_err_t app_expression_emote_start(void);
-esp_err_t app_expression_emote_set_network_state(bool connected);
-
-esp_err_t app_expression_emote_set_status(bool sta_connected, const char *ap_ssid);
+esp_err_t captive_dns_start(void);
+void captive_dns_stop(void);
 
 #ifdef __cplusplus
 }

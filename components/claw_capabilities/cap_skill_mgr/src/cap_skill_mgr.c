@@ -506,8 +506,92 @@ static esp_err_t cap_skill_deactivate_execute(const char *input_json,
     snprintf(skill_id_buf, sizeof(skill_id_buf), "%s", skill_id_item->valuestring);
 
     if (strcmp(skill_id_buf, "all") == 0) {
+        char **active_ids = NULL;
+        size_t active_count = 0;
+        esp_err_t list_err = claw_skill_load_active_skill_ids(ctx->session_id,
+                                                              &active_ids,
+                                                              &active_count);
+        if (list_err != ESP_OK && list_err != ESP_ERR_NOT_FOUND) {
+            cJSON_Delete(root);
+            snprintf(output, output_size,
+                     "{\"ok\":false,\"error\":\"failed to enumerate active skills\","
+                     "\"skill_id\":\"all\",\"detail\":\"%s\"}",
+                     esp_err_to_name(list_err));
+            return list_err;
+        }
+
+        char first_block_id[64] = {0};
+        char first_block_reason[256] = {0};
+        for (size_t i = 0; i < active_count; i++) {
+            if (!active_ids[i] || !active_ids[i][0]) {
+                continue;
+            }
+            char r[256] = {0};
+            esp_err_t g = claw_skill_check_deactivate_allowed(ctx->session_id,
+                                                              active_ids[i],
+                                                              r, sizeof(r));
+            if (g != ESP_OK) {
+                snprintf(first_block_id, sizeof(first_block_id), "%s", active_ids[i]);
+                snprintf(first_block_reason, sizeof(first_block_reason), "%s", r);
+                break;
+            }
+        }
+        for (size_t i = 0; i < active_count; i++) {
+            free(active_ids[i]);
+        }
+        free(active_ids);
+
+        if (first_block_id[0]) {
+            cJSON_Delete(root);
+            cJSON *resp = cJSON_CreateObject();
+            char *rendered = NULL;
+            if (resp) {
+                cJSON_AddBoolToObject(resp, "ok", false);
+                cJSON_AddStringToObject(resp, "error", "deactivate blocked by skill guard");
+                cJSON_AddStringToObject(resp, "skill_id", "all");
+                cJSON_AddStringToObject(resp, "blocked_by", first_block_id);
+                cJSON_AddStringToObject(resp, "reason", first_block_reason);
+                rendered = cJSON_PrintUnformatted(resp);
+                cJSON_Delete(resp);
+            }
+            if (rendered) {
+                snprintf(output, output_size, "%s", rendered);
+                free(rendered);
+            } else {
+                snprintf(output, output_size,
+                         "{\"ok\":false,\"error\":\"deactivate blocked\","
+                         "\"skill_id\":\"all\",\"blocked_by\":\"%s\"}",
+                         first_block_id);
+            }
+            return ESP_OK;
+        }
         err = claw_skill_clear_active_for_session(ctx->session_id);
     } else {
+        char guard_reason[256] = {0};
+        err = claw_skill_check_deactivate_allowed(ctx->session_id, skill_id_buf,
+                                                  guard_reason, sizeof(guard_reason));
+        if (err != ESP_OK) {
+            cJSON_Delete(root);
+            cJSON *resp = cJSON_CreateObject();
+            char *rendered = NULL;
+            if (resp) {
+                cJSON_AddBoolToObject(resp, "ok", false);
+                cJSON_AddStringToObject(resp, "error", "deactivate blocked by skill guard");
+                cJSON_AddStringToObject(resp, "skill_id", skill_id_buf);
+                cJSON_AddStringToObject(resp, "reason", guard_reason);
+                rendered = cJSON_PrintUnformatted(resp);
+                cJSON_Delete(resp);
+            }
+            if (rendered) {
+                snprintf(output, output_size, "%s", rendered);
+                free(rendered);
+            } else {
+                snprintf(output, output_size,
+                         "{\"ok\":false,\"error\":\"deactivate blocked\","
+                         "\"skill_id\":\"%s\"}", skill_id_buf);
+            }
+            return ESP_OK;
+        }
         err = claw_skill_deactivate_for_session(ctx->session_id, skill_id_buf);
     }
     cJSON_Delete(root);

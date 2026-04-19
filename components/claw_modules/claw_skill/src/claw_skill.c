@@ -22,6 +22,15 @@ static const char *SKILLS_LIST_FILE = "skills_list.json";
 #define CLAW_SKILL_DEFAULT_MAX_FILES 64
 #define CLAW_SKILL_DEFAULT_MAX_BYTES 2048
 #define CLAW_SKILL_MAX_PATH          192
+#define CLAW_SKILL_MAX_GUARDS        8
+
+typedef struct {
+    char skill_id[64];
+    claw_skill_deactivate_guard_t guard;
+} claw_skill_guard_entry_t;
+
+static claw_skill_guard_entry_t s_guards[CLAW_SKILL_MAX_GUARDS];
+static size_t s_guard_count;
 
 #ifdef CONFIG_CLAW_SKILL_DEBUG_LOG
 #define CLAW_SKILL_DIAGE(...) ESP_LOGE(TAG, __VA_ARGS__)
@@ -1082,6 +1091,62 @@ esp_err_t claw_skill_clear_active_for_session(const char *session_id)
         return ESP_ERR_INVALID_ARG;
     }
     return save_active_skill_ids_to_disk(session_id, NULL, 0);
+}
+
+esp_err_t claw_skill_register_deactivate_guard(const char *skill_id,
+                                               claw_skill_deactivate_guard_t guard)
+{
+    if (!skill_id || !skill_id[0] || !guard) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    for (size_t i = 0; i < s_guard_count; i++) {
+        if (strcmp(s_guards[i].skill_id, skill_id) == 0) {
+            s_guards[i].guard = guard;
+            ESP_LOGI(TAG, "Replaced deactivate guard for skill '%s'", skill_id);
+            return ESP_OK;
+        }
+    }
+
+    if (s_guard_count >= CLAW_SKILL_MAX_GUARDS) {
+        ESP_LOGE(TAG, "Cannot register guard for '%s': table full (max %d)",
+                 skill_id, CLAW_SKILL_MAX_GUARDS);
+        return ESP_ERR_NO_MEM;
+    }
+
+    safe_copy(s_guards[s_guard_count].skill_id,
+              sizeof(s_guards[s_guard_count].skill_id),
+              skill_id);
+    s_guards[s_guard_count].guard = guard;
+    s_guard_count++;
+    ESP_LOGI(TAG, "Registered deactivate guard for skill '%s'", skill_id);
+    return ESP_OK;
+}
+
+esp_err_t claw_skill_check_deactivate_allowed(const char *session_id,
+                                              const char *skill_id,
+                                              char *reason_out,
+                                              size_t reason_size)
+{
+    if (reason_out && reason_size > 0) {
+        reason_out[0] = '\0';
+    }
+    if (!skill_id || !skill_id[0]) {
+        return ESP_OK;
+    }
+
+    for (size_t i = 0; i < s_guard_count; i++) {
+        if (strcmp(s_guards[i].skill_id, skill_id) != 0) {
+            continue;
+        }
+        esp_err_t err = s_guards[i].guard(session_id, skill_id, reason_out, reason_size);
+        if (err != ESP_OK && reason_out && reason_size > 0 && reason_out[0] == '\0') {
+            snprintf(reason_out, reason_size,
+                     "deactivation refused by skill '%s' guard", skill_id);
+        }
+        return err;
+    }
+    return ESP_OK;
 }
 
 static esp_err_t claw_skill_skills_list_collect(const claw_core_request_t *request,

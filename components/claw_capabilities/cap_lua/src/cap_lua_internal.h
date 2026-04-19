@@ -17,20 +17,9 @@
 #define CAP_LUA_MAX_SCRIPT_SIZE         (16 * 1024)
 #define CAP_LUA_OUTPUT_SIZE             (4 * 1024)
 #define CAP_LUA_SYNC_DEFAULT_TIMEOUT_MS 60000
-/*
- * Async jobs default to "until cancelled" so long-running clocks, watchers,
- * and games can run indefinitely. Use lua_stop_async_job to terminate them.
- */
 #define CAP_LUA_ASYNC_DEFAULT_TIMEOUT_MS 0
 #define CAP_LUA_ASYNC_MAX_JOBS          16
 #define CAP_LUA_ASYNC_MAX_CONCURRENT    4
-/*
- * Stack lives in internal DRAM (FATFS / display drivers expect it). 12 KB is
- * the empirically-tuned minimum that still fits typical Lua scripts with a
- * comfortable margin; reducing further increases the risk of stack overflow
- * in deeper Lua call chains, while raising it makes allocation more likely to
- * fail once the heap is fragmented after boot.
- */
 #define CAP_LUA_ASYNC_STACK             (12 * 1024)
 #define CAP_LUA_ASYNC_PRIO              4
 #define CAP_LUA_MAX_MODULES             16
@@ -38,8 +27,8 @@
 #define CAP_LUA_JOB_NAME_MAX            32
 #define CAP_LUA_JOB_EXCLUSIVE_MAX       16
 #define CAP_LUA_JOB_PATH_MAX            192
-#define CAP_LUA_JOB_ID_LEN              9      /* 8 hex + NUL */
-#define CAP_LUA_STOP_WAIT_DEFAULT_MS    2000   /* sync wait window for stop */
+#define CAP_LUA_JOB_ID_LEN              9
+#define CAP_LUA_STOP_WAIT_DEFAULT_MS    2000
 
 typedef struct {
     char path[CAP_LUA_JOB_PATH_MAX];
@@ -78,14 +67,6 @@ esp_err_t cap_lua_ensure_base_dir(void);
 
 esp_err_t cap_lua_runtime_init(void);
 
-/*
- * Execute a Lua script synchronously.
- *
- * stop_requested may be NULL; when non-NULL the runtime hook will raise
- * a Lua error tagged "stopped by user" once the flag becomes true.
- *
- * timeout_ms == 0 means "no wall-clock deadline".
- */
 esp_err_t cap_lua_runtime_execute_file(const char *path,
                                        const char *args_json,
                                        uint32_t timeout_ms,
@@ -121,16 +102,12 @@ esp_err_t cap_lua_async_stop_all_jobs(const char *exclusive_filter,
                                       size_t output_size);
 size_t cap_lua_async_collect_active_snapshots(cap_lua_async_job_snapshot_t *out,
                                               size_t max);
+size_t cap_lua_async_active_count(void);
 const char *cap_lua_job_status_name(cap_lua_job_status_t status);
-/* Lightweight single-job status probe. Returns ESP_ERR_NOT_FOUND if the slot
- * has already been recycled. summary_out may be NULL. */
 esp_err_t cap_lua_async_get_status(const char *job_id,
                                    cap_lua_job_status_t *out_status,
                                    char *summary_out,
                                    size_t summary_out_size);
-/* Block up to timeout_ms waiting for the job to reach a terminal state. If
- * the job is already terminal, returns immediately. Returns the latest status
- * snapshot regardless of whether the wait timed out. */
 esp_err_t cap_lua_async_wait_settle(const char *job_id,
                                     uint32_t timeout_ms,
                                     cap_lua_job_status_t *out_status,

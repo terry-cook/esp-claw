@@ -290,6 +290,10 @@ static esp_err_t status_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(root, "wifi_connected", basic_demo_wifi_is_connected());
     json_add_string(root, "ip", basic_demo_wifi_get_ip());
     json_add_string(root, "storage_base_path", s_ctx.storage_base_path);
+    cJSON_AddBoolToObject(root, "ap_active", basic_demo_wifi_is_ap_active());
+    json_add_string(root, "ap_ssid", basic_demo_wifi_get_ap_ssid());
+    json_add_string(root, "ap_ip", basic_demo_wifi_get_ap_ip());
+    json_add_string(root, "wifi_mode", basic_demo_wifi_get_mode_string());
 
     char *payload = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -784,6 +788,26 @@ static esp_err_t files_mkdir_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
+static esp_err_t captive_404_handler(httpd_req_t *req, httpd_err_code_t error)
+{
+    if (!basic_demo_wifi_is_ap_active()) {
+        return httpd_resp_send_err(req, error, NULL);
+    }
+
+    const char *ap_ip = basic_demo_wifi_get_ap_ip();
+    if (!ap_ip || !ap_ip[0]) {
+        ap_ip = "192.168.4.1";
+    }
+
+    char location[40];
+    snprintf(location, sizeof(location), "http://%s/", ap_ip);
+
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", location);
+    httpd_resp_set_hdr(req, "Connection", "close");
+    return httpd_resp_send(req, NULL, 0);
+}
+
 esp_err_t config_http_server_init(const char *storage_base_path)
 {
     if (!storage_base_path || storage_base_path[0] != '/') {
@@ -833,6 +857,11 @@ esp_err_t config_http_server_start(void)
                             TAG,
                             "Failed to register URI handler");
     }
+
+    ESP_RETURN_ON_ERROR(httpd_register_err_handler(s_ctx.server,
+                                                   HTTPD_404_NOT_FOUND,
+                                                   captive_404_handler),
+                        TAG, "Failed to register captive 404 handler");
 
     ESP_LOGI(TAG, "HTTP server started on port %d", BASIC_DEMO_HTTP_SERVER_PORT);
     return ESP_OK;

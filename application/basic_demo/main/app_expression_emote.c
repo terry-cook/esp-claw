@@ -184,7 +184,7 @@ static emote_config_t app_emote_get_default_config(void)
     return config;
 }
 
-static esp_err_t app_emote_show_idle_msg(const char *idle, const char *msg)
+static esp_err_t app_emote_apply(const char *idle, const char *msg)
 {
     ESP_RETURN_ON_FALSE(s_emote_handle != NULL, ESP_ERR_INVALID_STATE,
                         TAG, "emote handle is NULL");
@@ -193,6 +193,7 @@ static esp_err_t app_emote_show_idle_msg(const char *idle, const char *msg)
                         TAG, "set emote message failed");
     ESP_RETURN_ON_ERROR(emote_set_anim_emoji(s_emote_handle, idle),
                         TAG, "set emote idle animation failed");
+
     if (display_arbiter_is_owner(DISPLAY_ARBITER_OWNER_EMOTE)) {
         ESP_RETURN_ON_ERROR(emote_notify_all_refresh(s_emote_handle),
                             TAG, "refresh emote display failed");
@@ -203,14 +204,30 @@ static esp_err_t app_emote_show_idle_msg(const char *idle, const char *msg)
 
 esp_err_t app_expression_emote_set_network_state(bool connected)
 {
-    const char *idle = connected ? "swim" : "offline";
-    const char *msg = connected ? "Wi-Fi connected" : "Wi-Fi offline";
+    return app_expression_emote_set_status(connected, NULL);
+}
 
+esp_err_t app_expression_emote_set_status(bool sta_connected, const char *ap_ssid)
+{
     ESP_RETURN_ON_FALSE(s_emote_handle != NULL, ESP_ERR_INVALID_STATE,
                         TAG, "emote handle is NULL");
 
-    ESP_LOGI(TAG, "Update network emote: %s", idle);
-    return app_emote_show_idle_msg(idle, msg);
+    const bool ap_present = (ap_ssid != NULL && ap_ssid[0] != '\0');
+    const char *idle = sta_connected ? "swim" : "offline";
+
+    char msg[96];
+    if (sta_connected && ap_present) {
+        snprintf(msg, sizeof(msg), "Online * AP: %s", ap_ssid);
+    } else if (sta_connected) {
+        snprintf(msg, sizeof(msg), "Wi-Fi connected");
+    } else if (ap_present) {
+        snprintf(msg, sizeof(msg), "Setup WiFi: %s", ap_ssid);
+    } else {
+        snprintf(msg, sizeof(msg), "Wi-Fi offline");
+    }
+
+    ESP_LOGI(TAG, "Update network emote: idle=%s msg=\"%s\"", idle, msg);
+    return app_emote_apply(idle, msg);
 }
 
 static void app_emote_cleanup(void)
