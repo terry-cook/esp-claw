@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "claw_core.h"
+#include "claw_task.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -14,7 +15,9 @@
 #include <time.h>
 
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -1395,22 +1398,16 @@ esp_err_t claw_core_start(void)
         return ESP_OK;
     }
 
-    if (s_core.task_core == tskNO_AFFINITY) {
-        task_result = xTaskCreate(claw_core_task,
-                                  "claw_core",
-                                  s_core.task_stack_size,
-                                  NULL,
-                                  s_core.task_priority,
-                                  &s_core.task_handle);
-    } else {
-        task_result = xTaskCreatePinnedToCore(claw_core_task,
-                                              "claw_core",
-                                              s_core.task_stack_size,
-                                              NULL,
-                                              s_core.task_priority,
-                                              &s_core.task_handle,
-                                              s_core.task_core);
-    }
+    task_result = claw_task_create(&(claw_task_config_t){
+                                        .name = "claw_core",
+                                        .stack_size = s_core.task_stack_size,
+                                        .priority = s_core.task_priority,
+                                        .core_id = s_core.task_core,
+                                        .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                                    },
+                                    claw_core_task,
+                                    NULL,
+                                    &s_core.task_handle);
 
     if (task_result != pdPASS) {
         return ESP_FAIL;

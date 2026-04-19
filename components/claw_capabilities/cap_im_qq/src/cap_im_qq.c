@@ -17,9 +17,9 @@
 #include <sys/types.h>
 
 #include "cJSON.h"
+#include "claw_task.h"
 #include "claw_event_publisher.h"
 #include "esp_crt_bundle.h"
-#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -41,7 +41,6 @@ static const char *TAG = "cap_im_qq";
 #define CAP_IM_QQ_HTTP_RESP_INIT       2048
 #define CAP_IM_QQ_WS_TASK_STACK        6144
 #define CAP_IM_QQ_WS_CLIENT_STACK      8192
-#define CAP_IM_QQ_INBOUND_TASK_STACK   8192
 #define CAP_IM_QQ_WS_PRIO              5
 #define CAP_IM_QQ_INBOUND_QUEUE_LEN    8
 #define CAP_IM_QQ_DEDUP_CACHE_SIZE     64
@@ -67,17 +66,6 @@ static const char *TAG = "cap_im_qq";
 #ifndef BASIC_DEMO_QQ_APP_SECRET
 #define BASIC_DEMO_QQ_APP_SECRET ""
 #endif
-
-static UBaseType_t cap_im_qq_task_memory_caps(void)
-{
-#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-        return MALLOC_CAP_SPIRAM;
-    }
-#endif
-
-    return MALLOC_CAP_INTERNAL;
-}
 
 typedef struct {
     char *buf;
@@ -1065,7 +1053,7 @@ static void cap_im_qq_inbound_task(void *arg)
     }
 
     s_qq.inbound_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static void cap_im_qq_ws_event_handler(void *arg,
@@ -1640,7 +1628,7 @@ static void cap_im_qq_ws_task(void *arg)
 
     s_qq.ws_task = NULL;
     s_qq.ws_client = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static void cap_im_qq_reset_runtime_state(void)
@@ -1676,14 +1664,16 @@ static esp_err_t cap_im_qq_gateway_start(void)
         }
     }
 
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_qq_inbound_task,
-                                         "qq_inbound",
-                                         CAP_IM_QQ_INBOUND_TASK_STACK,
-                                         NULL,
-                                         CAP_IM_QQ_WS_PRIO,
-                                         &s_qq.inbound_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_qq_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "qq_inbound",
+                              .stack_size = 8192,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_qq_inbound_task,
+                          NULL,
+                          &s_qq.inbound_task);
     if (ok != pdPASS) {
         vQueueDelete(s_qq.inbound_queue);
         s_qq.inbound_queue = NULL;
@@ -1691,14 +1681,16 @@ static esp_err_t cap_im_qq_gateway_start(void)
         return ESP_FAIL;
     }
 
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_qq_ws_task,
-                                         "qq_ws",
-                                         CAP_IM_QQ_WS_TASK_STACK,
-                                         NULL,
-                                         CAP_IM_QQ_WS_PRIO,
-                                         &s_qq.ws_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_qq_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "qq_ws",
+                              .stack_size = 6144,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_qq_ws_task,
+                          NULL,
+                          &s_qq.ws_task);
     if (ok != pdPASS) {
         s_qq.stop_requested = true;
         s_qq.ws_task = NULL;

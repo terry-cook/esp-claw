@@ -13,11 +13,13 @@
 #include <time.h>
 
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
@@ -29,8 +31,6 @@ static const char *TAG = "cap_time";
 #define CAP_TIME_UTC_TIMEZONE "UTC0"
 #define CAP_TIME_DEFAULT_DISCONNECTED_RETRY_MS 5000
 #define CAP_TIME_DEFAULT_SYNC_RETRY_MS        30000
-#define CAP_TIME_SYNC_TASK_STACK_SIZE          4096
-#define CAP_TIME_SYNC_TASK_PRIORITY               5
 
 static const char *s_month_names[] = {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -321,7 +321,7 @@ static void cap_time_sync_service_task(void *arg)
 
     s_time_service.running = false;
     s_time_service.task_handle = NULL;
-    vTaskDelete(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_time_execute(const char *input_json,
@@ -404,12 +404,16 @@ esp_err_t cap_time_sync_service_start(const cap_time_sync_service_config_t *conf
 
     s_time_service.running = true;
 
-    ok = xTaskCreate(cap_time_sync_service_task,
-                     "cap_time_sync",
-                     CAP_TIME_SYNC_TASK_STACK_SIZE,
-                     NULL,
-                     CAP_TIME_SYNC_TASK_PRIORITY,
-                     &s_time_service.task_handle);
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "cap_time_sync",
+                              .stack_size = 4096,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_time_sync_service_task,
+                          NULL,
+                          &s_time_service.task_handle);
     if (ok != pdPASS || !s_time_service.task_handle) {
         s_time_service.running = false;
         s_time_service.task_handle = NULL;

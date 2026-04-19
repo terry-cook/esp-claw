@@ -17,9 +17,9 @@
 #include <sys/types.h>
 
 #include "cJSON.h"
+#include "claw_task.h"
 #include "claw_event_publisher.h"
 #include "esp_crt_bundle.h"
-#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -35,9 +35,6 @@ static const char *TAG = "cap_im_tg";
 #define CAP_IM_TG_MAX_MSG_LEN         4096
 #define CAP_IM_TG_POLL_TIMEOUT_S      20
 #define CAP_IM_TG_RETRY_DELAY_MS      3000
-#define CAP_IM_TG_TASK_STACK          6144
-#define CAP_IM_TG_ATTACHMENT_STACK    8192
-#define CAP_IM_TG_TASK_PRIO           5
 #define CAP_IM_TG_ATTACHMENT_QUEUE_LEN 8
 #define CAP_IM_TG_DEDUP_CACHE_SIZE    64
 #define CAP_IM_TG_PATH_BUF_SIZE       256
@@ -47,17 +44,6 @@ static const char *TAG = "cap_im_tg";
 #ifndef BASIC_DEMO_TG_BOT_TOKEN
 #define BASIC_DEMO_TG_BOT_TOKEN ""
 #endif
-
-static UBaseType_t cap_im_tg_task_memory_caps(void)
-{
-#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-        return MALLOC_CAP_SPIRAM;
-    }
-#endif
-
-    return MALLOC_CAP_INTERNAL;
-}
 
 typedef struct {
     char *buf;
@@ -558,7 +544,7 @@ static void cap_im_tg_attachment_task(void *arg)
     }
 
     s_tg.attachment_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static void cap_im_tg_queue_attachment(const char *chat_id,
@@ -1127,7 +1113,7 @@ static void cap_im_tg_poll_task(void *arg)
     }
 
     s_tg.poll_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_im_tg_gateway_init(void)
@@ -1161,28 +1147,32 @@ static esp_err_t cap_im_tg_gateway_start(void)
             return ESP_ERR_NO_MEM;
         }
     }
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_tg_attachment_task,
-                                         "tg_attach",
-                                         CAP_IM_TG_ATTACHMENT_STACK,
-                                         NULL,
-                                         CAP_IM_TG_TASK_PRIO,
-                                         &s_tg.attachment_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_tg_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "tg_attach",
+                              .stack_size = 8192,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_tg_attachment_task,
+                          NULL,
+                          &s_tg.attachment_task);
     if (ok != pdPASS) {
         vQueueDelete(s_tg.attachment_queue);
         s_tg.attachment_queue = NULL;
         s_tg.attachment_task = NULL;
         return ESP_FAIL;
     }
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_tg_poll_task,
-                                         "tg_poll",
-                                         CAP_IM_TG_TASK_STACK,
-                                         NULL,
-                                         CAP_IM_TG_TASK_PRIO,
-                                         &s_tg.poll_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_tg_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "tg_poll",
+                              .stack_size = 6144,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_tg_poll_task,
+                          NULL,
+                          &s_tg.poll_task);
     if (ok != pdPASS) {
         s_tg.stop_requested = true;
         s_tg.poll_task = NULL;

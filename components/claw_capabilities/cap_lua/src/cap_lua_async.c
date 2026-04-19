@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "claw_task.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -53,12 +54,6 @@ static cap_lua_job_record_t s_jobs[CAP_LUA_ASYNC_MAX_JOBS];
 static SemaphoreHandle_t s_slot_terminal_sem[CAP_LUA_ASYNC_MAX_JOBS];
 static size_t s_running_jobs;
 static bool s_runner_started;
-
-static UBaseType_t cap_lua_task_memory_caps(void)
-{
-    /* Lua async jobs touch FATFS/flash-backed files, so their stacks must stay internal. */
-    return MALLOC_CAP_INTERNAL;
-}
 
 const char *cap_lua_job_status_name(cap_lua_job_status_t status)
 {
@@ -233,7 +228,7 @@ static void cap_lua_job_task(void *arg)
     esp_err_t err;
 
     if (!ctx) {
-        vTaskDeleteWithCaps(NULL);
+        claw_task_delete(NULL);
         return;
     }
 
@@ -242,7 +237,7 @@ static void cap_lua_job_task(void *arg)
         cap_lua_finish_job(ctx, false, NULL, "failed to allocate output buffer");
         free(ctx->args_json);
         free(ctx);
-        vTaskDeleteWithCaps(NULL);
+        claw_task_delete(NULL);
         return;
     }
 
@@ -256,7 +251,7 @@ static void cap_lua_job_task(void *arg)
     free(output);
     free(ctx->args_json);
     free(ctx);
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 esp_err_t cap_lua_async_init(void)
@@ -653,40 +648,43 @@ static esp_err_t cap_lua_async_submit_once(const cap_lua_async_job_t *job,
     s_running_jobs++;
     xSemaphoreGive(s_job_lock);
 
-    if (xTaskCreatePinnedToCoreWithCaps(cap_lua_job_task,
-                                        "cap_lua_async",
-                                        CAP_LUA_ASYNC_STACK,
-                                        ctx,
-                                        CAP_LUA_ASYNC_PRIO,
-                                        &s_jobs[slot].task_handle,
-                                        tskNO_AFFINITY,
-                                        cap_lua_task_memory_caps()) != pdPASS) {
-        UBaseType_t caps = cap_lua_task_memory_caps();
-        size_t free_bytes = heap_caps_get_free_size(caps);
-        size_t largest = heap_caps_get_largest_free_block(caps);
-        ESP_LOGE(TAG, "Failed to spawn task (stack=%u, free=%u, largest_block=%u)",
-                 (unsigned)CAP_LUA_ASYNC_STACK,
-                 (unsigned)free_bytes,
-                 (unsigned)largest);
-        if (err_out && err_out_size > 0) {
-            snprintf(err_out, err_out_size,
-                     "Out of internal RAM for Lua task stack "
-                     "(need %u bytes, largest free block %u bytes, total free %u bytes). "
-                     "Stop another job and retry.",
-                     (unsigned)CAP_LUA_ASYNC_STACK,
-                     (unsigned)largest,
-                     (unsigned)free_bytes);
-        }
-        if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
-            cap_lua_clear_slot(&s_jobs[slot]);
-            if (s_running_jobs > 0) {
-                s_running_jobs--;
+    {
+        claw_task_config_t task_config = {
+            .name = "cap_lua_async",
+            .stack_size = 12 * 1024,
+            .priority = 4,
+            .core_id = tskNO_AFFINITY,
+            .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+        };
+
+        if (claw_task_create(&task_config, cap_lua_job_task, ctx, &s_jobs[slot].task_handle) != pdPASS) {
+            size_t free_bytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+
+            ESP_LOGE(TAG, "Failed to spawn task (stack=%u, free=%u, largest_block=%u)",
+                     (unsigned)task_config.stack_size,
+                     (unsigned)free_bytes,
+                     (unsigned)largest);
+            if (err_out && err_out_size > 0) {
+                snprintf(err_out, err_out_size,
+                         "Out of task memory for Lua task stack "
+                         "(need %u bytes, largest free block %u bytes, total free %u bytes). "
+                         "Stop another job and retry.",
+                         (unsigned)task_config.stack_size,
+                         (unsigned)largest,
+                         (unsigned)free_bytes);
             }
-            xSemaphoreGive(s_job_lock);
+            if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                cap_lua_clear_slot(&s_jobs[slot]);
+                if (s_running_jobs > 0) {
+                    s_running_jobs--;
+                }
+                xSemaphoreGive(s_job_lock);
+            }
+            free(ctx->args_json);
+            free(ctx);
+            return ESP_ERR_NO_MEM;
         }
-        free(ctx->args_json);
-        free(ctx);
-        return ESP_ERR_NO_MEM;
     }
 
     if (xSemaphoreTake(s_job_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {

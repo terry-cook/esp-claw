@@ -10,8 +10,10 @@
 
 #include "cap_scheduler_internal.h"
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
 
 static const char *TAG = "cap_scheduler";
 
@@ -568,7 +570,7 @@ static void cap_scheduler_task(void *arg)
     }
     s_cap_scheduler.started = false;
     s_cap_scheduler.task_handle = NULL;
-    vTaskDelete(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_scheduler_load_from_disk_locked(void)
@@ -809,6 +811,13 @@ esp_err_t cap_scheduler_init(const cap_scheduler_config_t *config)
 esp_err_t cap_scheduler_start(void)
 {
     BaseType_t ok;
+    claw_task_config_t task_config = {
+        .name = "cap_scheduler",
+        .stack_size = s_cap_scheduler.config.task_stack_size,
+        .priority = s_cap_scheduler.config.task_priority,
+        .core_id = s_cap_scheduler.config.task_core,
+        .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+    };
 
     if (!s_cap_scheduler.initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -818,22 +827,7 @@ esp_err_t cap_scheduler_start(void)
     }
 
     s_cap_scheduler.stop_requested = false;
-    if (s_cap_scheduler.config.task_core == tskNO_AFFINITY) {
-        ok = xTaskCreate(cap_scheduler_task,
-                         "cap_scheduler",
-                         s_cap_scheduler.config.task_stack_size,
-                         NULL,
-                         s_cap_scheduler.config.task_priority,
-                         &s_cap_scheduler.task_handle);
-    } else {
-        ok = xTaskCreatePinnedToCore(cap_scheduler_task,
-                                     "cap_scheduler",
-                                     s_cap_scheduler.config.task_stack_size,
-                                     NULL,
-                                     s_cap_scheduler.config.task_priority,
-                                     &s_cap_scheduler.task_handle,
-                                     s_cap_scheduler.config.task_core);
-    }
+    ok = claw_task_create(&task_config, cap_scheduler_task, NULL, &s_cap_scheduler.task_handle);
     if (ok != pdPASS) {
         s_cap_scheduler.task_handle = NULL;
         return ESP_FAIL;

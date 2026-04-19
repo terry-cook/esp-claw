@@ -20,8 +20,6 @@
 #define CAP_LUA_ASYNC_DEFAULT_TIMEOUT_MS 0
 #define CAP_LUA_ASYNC_MAX_JOBS          16
 #define CAP_LUA_ASYNC_MAX_CONCURRENT    4
-#define CAP_LUA_ASYNC_STACK             (12 * 1024)
-#define CAP_LUA_ASYNC_PRIO              4
 #define CAP_LUA_MAX_MODULES             16
 
 #define CAP_LUA_JOB_NAME_MAX            32

@@ -13,21 +13,20 @@
 
 #include "cJSON.h"
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
 
 static const char *TAG = "cap_system";
 
-#define CAP_SYSTEM_RESTART_TASK_STACK_SIZE 3072
-#define CAP_SYSTEM_RESTART_TASK_PRIORITY      5
 #define CAP_SYSTEM_RESTART_DEFAULT_DELAY_MS 500
 
 #ifdef CONFIG_CLAW_CAP_SYSTEM_DEBUG_LOGS
@@ -406,12 +405,16 @@ static esp_err_t cap_system_restart_async(uint32_t delay_ms)
     task_args->delay_ms = delay_ms;
 
     // Restart is deferred to let the current response flush out first.
-    ok = xTaskCreate(cap_system_restart_task,
-                     "cap_system_restart",
-                     CAP_SYSTEM_RESTART_TASK_STACK_SIZE,
-                     task_args,
-                     CAP_SYSTEM_RESTART_TASK_PRIORITY,
-                     NULL);
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "cap_system_restart",
+                              .stack_size = 3072,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_system_restart_task,
+                          task_args,
+                          NULL);
     if (ok != pdPASS) {
         free(task_args);
         ESP_LOGE(TAG, "restart task create failed");

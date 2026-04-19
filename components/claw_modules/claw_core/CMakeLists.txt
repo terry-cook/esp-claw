@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/claw_core.c"
+        "src/claw_task.c"
         "src/claw_core_llm.c"
         "src/llm/claw_llm_runtime.c"
         "src/llm/claw_llm_http_transport.c"
@@ -14,6 +15,7 @@ idf_component_register(
     REQUIRES
         esp_http_client
         esp-tls
+        freertos
         json
         mbedtls
     PRIV_REQUIRES

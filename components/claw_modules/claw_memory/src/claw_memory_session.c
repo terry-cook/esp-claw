@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "claw_memory_internal.h"
+#include "claw_task.h"
 
 #include <ctype.h>
 #include <inttypes.h>
@@ -12,6 +13,8 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -378,7 +381,7 @@ static void claw_memory_async_extract_deinit(void)
         job = next;
     }
     if (s_async_extract.task_handle) {
-        vTaskDelete(s_async_extract.task_handle);
+        claw_task_delete(s_async_extract.task_handle);
         s_async_extract.task_handle = NULL;
     }
     if (s_async_extract.queue) {
@@ -447,12 +450,16 @@ esp_err_t claw_memory_async_extract_init(const claw_memory_config_t *config)
         return ESP_ERR_NO_MEM;
     }
 
-    task_result = xTaskCreate(claw_memory_async_extract_task,
-                              "claw_mem_extract",
-                              CLAW_MEMORY_ASYNC_EXTRACT_STACK_SIZE,
-                              NULL,
-                              CLAW_MEMORY_ASYNC_EXTRACT_PRIORITY,
-                              &s_async_extract.task_handle);
+    task_result = claw_task_create(&(claw_task_config_t){
+                                        .name = "claw_mem_extract",
+                                        .stack_size = CLAW_MEMORY_ASYNC_EXTRACT_STACK_SIZE,
+                                        .priority = CLAW_MEMORY_ASYNC_EXTRACT_PRIORITY,
+                                        .core_id = tskNO_AFFINITY,
+                                        .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                                    },
+                                    claw_memory_async_extract_task,
+                                    NULL,
+                                    &s_async_extract.task_handle);
     if (task_result != pdPASS) {
         claw_memory_async_extract_deinit();
         return ESP_FAIL;

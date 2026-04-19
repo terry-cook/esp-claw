@@ -17,10 +17,10 @@
 #include "cap_im_attachment.h"
 #include "cJSON.h"
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "claw_event_publisher.h"
 #include "esp_crt_bundle.h"
 #include "esp_err.h"
-#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -40,8 +40,6 @@ static const char *TAG = "cap_im_wechat";
 #define CAP_IM_WECHAT_MAX_MSG_LEN 4000
 #define CAP_IM_WECHAT_POLL_TIMEOUT_MS 35000
 #define CAP_IM_WECHAT_RETRY_DELAY_MS 2000
-#define CAP_IM_WECHAT_TASK_STACK 6144
-#define CAP_IM_WECHAT_TASK_PRIO 5
 #define CAP_IM_WECHAT_DEDUP_CACHE_SIZE 64
 #define CAP_IM_WECHAT_CONTEXT_CACHE_SIZE 32
 #define CAP_IM_WECHAT_PATH_BUF_SIZE 256
@@ -120,17 +118,6 @@ typedef struct {
     size_t context_idx;
     cap_im_wechat_qr_state_t qr;
 } cap_im_wechat_state_t;
-
-static UBaseType_t cap_im_wechat_task_memory_caps(void)
-{
-#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-        return MALLOC_CAP_SPIRAM;
-    }
-#endif
-
-    return MALLOC_CAP_INTERNAL;
-}
 
 static cap_im_wechat_state_t s_wechat = {
     .base_url = CAP_IM_WECHAT_DEFAULT_BASE_URL,
@@ -1483,7 +1470,7 @@ static void cap_im_wechat_poll_task(void *arg)
     }
 
     s_wechat.poll_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_im_wechat_send_message_json(cJSON *msg_root)
@@ -2005,14 +1992,16 @@ static esp_err_t cap_im_wechat_gateway_start(void)
     }
 
     s_wechat.stop_requested = false;
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_poll_task,
-                                         "wechat_poll",
-                                         CAP_IM_WECHAT_TASK_STACK,
-                                         NULL,
-                                         CAP_IM_WECHAT_TASK_PRIO,
-                                         &s_wechat.poll_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_wechat_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "wechat_poll",
+                              .stack_size = 6144,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_wechat_poll_task,
+                          NULL,
+                          &s_wechat.poll_task);
     if (ok != pdPASS) {
         s_wechat.poll_task = NULL;
         return ESP_FAIL;
@@ -2178,14 +2167,16 @@ esp_err_t cap_im_wechat_qr_login_start(const char *account_id, bool force)
     }
 
     if (!s_wechat.qr_task) {
-        ok = xTaskCreatePinnedToCoreWithCaps(cap_im_wechat_qr_task,
-                                             "wechat_qr",
-                                             CAP_IM_WECHAT_TASK_STACK,
-                                             NULL,
-                                             CAP_IM_WECHAT_TASK_PRIO,
-                                             &s_wechat.qr_task,
-                                             tskNO_AFFINITY,
-                                             cap_im_wechat_task_memory_caps());
+        ok = claw_task_create(&(claw_task_config_t){
+                                  .name = "wechat_qr",
+                                  .stack_size = 6144,
+                                  .priority = 5,
+                                  .core_id = tskNO_AFFINITY,
+                                  .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                              },
+                              cap_im_wechat_qr_task,
+                              NULL,
+                              &s_wechat.qr_task);
         if (ok != pdPASS) {
             s_wechat.qr.active = false;
             s_wechat.qr_task = NULL;
@@ -2599,5 +2590,5 @@ static void cap_im_wechat_qr_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }

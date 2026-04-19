@@ -19,7 +19,10 @@
 #include "cJSON.h"
 #include "claw_core.h"
 #include "claw_event_publisher.h"
+#include "claw_task.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -2028,7 +2031,7 @@ static void claw_event_router_task(void *arg)
 
     s_runtime.task_handle = NULL;
     s_runtime.started = false;
-    vTaskDelete(NULL);
+    claw_task_delete(NULL);
 }
 
 esp_err_t claw_event_router_init(const claw_event_router_config_t *config)
@@ -2106,22 +2109,16 @@ esp_err_t claw_event_router_start(void)
                                                s_runtime.config.core_receive_timeout_ms : CLAW_EVENT_ROUTER_DEFAULT_RECEIVE;
     s_runtime.stop_requested = false;
 
-    if (core == tskNO_AFFINITY) {
-        task_ok = xTaskCreate(claw_event_router_task,
-                              "event_router",
-                              stack_size,
-                              NULL,
-                              priority,
-                              &s_runtime.task_handle);
-    } else {
-        task_ok = xTaskCreatePinnedToCore(claw_event_router_task,
-                                          "event_router",
-                                          stack_size,
-                                          NULL,
-                                          priority,
-                                          &s_runtime.task_handle,
-                                          core);
-    }
+    task_ok = claw_task_create(&(claw_task_config_t){
+                                   .name = "event_router",
+                                   .stack_size = stack_size,
+                                   .priority = priority,
+                                   .core_id = core,
+                                   .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                               },
+                               claw_event_router_task,
+                               NULL,
+                               &s_runtime.task_handle);
     if (task_ok != pdPASS) {
         s_runtime.task_handle = NULL;
         return ESP_FAIL;

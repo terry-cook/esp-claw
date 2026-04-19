@@ -18,10 +18,10 @@
 
 #include "cap_im_attachment.h"
 #include "claw_cap.h"
+#include "claw_task.h"
 #include "claw_event_publisher.h"
 #include "cJSON.h"
 #include "esp_crt_bundle.h"
-#include "esp_heap_caps.h"
 #include "esp_event.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -54,21 +54,9 @@
 #define CAP_IM_FEISHU_DEDUP_CACHE_SIZE 64
 #define CAP_IM_FEISHU_RECONNECT_DELAY_MS 3000
 #define CAP_IM_FEISHU_INITIAL_CONNECT_TIMEOUT_MS 15000
-#define CAP_IM_FEISHU_ATTACHMENT_STACK 8192
 #define CAP_IM_FEISHU_ATTACHMENT_QUEUE_LEN 8
 
 static const char *TAG = "cap_im_feishu";
-
-static UBaseType_t cap_im_feishu_task_memory_caps(void)
-{
-#if defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
-        return MALLOC_CAP_SPIRAM;
-    }
-#endif
-
-    return MALLOC_CAP_INTERNAL;
-}
 
 typedef struct {
     char *buf;
@@ -1553,7 +1541,7 @@ static void cap_im_feishu_attachment_task(void *arg)
     }
 
     s_feishu.attachment_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static void cap_im_feishu_queue_attachment(const char *chat_id,
@@ -1965,7 +1953,7 @@ static void cap_im_feishu_ws_task(void *arg)
 
     s_feishu.ws_client = NULL;
     s_feishu.ws_task = NULL;
-    vTaskDeleteWithCaps(NULL);
+    claw_task_delete(NULL);
 }
 
 static esp_err_t cap_im_feishu_gateway_init(void)
@@ -2554,14 +2542,16 @@ esp_err_t cap_im_feishu_start(void)
         }
     }
     if (!s_feishu.attachment_task) {
-        ok = xTaskCreatePinnedToCoreWithCaps(cap_im_feishu_attachment_task,
-                                             "feishu_attach",
-                                             CAP_IM_FEISHU_ATTACHMENT_STACK,
-                                             NULL,
-                                             5,
-                                             &s_feishu.attachment_task,
-                                             tskNO_AFFINITY,
-                                             cap_im_feishu_task_memory_caps());
+        ok = claw_task_create(&(claw_task_config_t){
+                                  .name = "feishu_attach",
+                                  .stack_size = 8192,
+                                  .priority = 5,
+                                  .core_id = tskNO_AFFINITY,
+                                  .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                              },
+                              cap_im_feishu_attachment_task,
+                              NULL,
+                              &s_feishu.attachment_task);
         if (ok != pdPASS) {
             vQueueDelete(s_feishu.attachment_queue);
             s_feishu.attachment_queue = NULL;
@@ -2571,17 +2561,19 @@ esp_err_t cap_im_feishu_start(void)
     }
 
     s_feishu.stop_requested = false;
-    ok = xTaskCreatePinnedToCoreWithCaps(cap_im_feishu_ws_task,
-                                         "feishu_ws",
-                                         8 * 1024,
-                                         NULL,
-                                         5,
-                                         &s_feishu.ws_task,
-                                         tskNO_AFFINITY,
-                                         cap_im_feishu_task_memory_caps());
+    ok = claw_task_create(&(claw_task_config_t){
+                              .name = "feishu_ws",
+                              .stack_size = 8192,
+                              .priority = 5,
+                              .core_id = tskNO_AFFINITY,
+                              .stack_policy = CLAW_TASK_STACK_PREFER_PSRAM,
+                          },
+                          cap_im_feishu_ws_task,
+                          NULL,
+                          &s_feishu.ws_task);
     if (ok != pdPASS) {
         if (s_feishu.attachment_task) {
-            vTaskDeleteWithCaps(s_feishu.attachment_task);
+            claw_task_delete(s_feishu.attachment_task);
             s_feishu.attachment_task = NULL;
         }
         if (s_feishu.attachment_queue) {

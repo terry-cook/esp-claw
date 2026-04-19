@@ -383,7 +383,7 @@ esp_err_t app_claw_start(const basic_demo_settings_t *settings)
     core_config.append_session_turn = claw_memory_append_session_turn_callback;
 #endif
     core_config.call_cap = claw_cap_call_from_core;
-    core_config.task_stack_size = 6 * 1024;
+    core_config.task_stack_size = 16 * 1024;
     core_config.task_priority = 5;
     core_config.task_core = tskNO_AFFINITY;
     core_config.max_tool_iterations = 20;
