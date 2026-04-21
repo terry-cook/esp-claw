@@ -1349,6 +1349,7 @@ static esp_err_t cap_im_qq_upload_media(const char *chat_id,
                                         char **out_file_info)
 {
     struct stat st;
+    const char *base_name = NULL;
     cJSON *body = NULL;
     char *path_buf = NULL;
     char *file_b64 = NULL;
@@ -1385,6 +1386,12 @@ static esp_err_t cap_im_qq_upload_media(const char *chat_id,
     cJSON_AddNumberToObject(body, "file_type", (double)file_type);
     cJSON_AddBoolToObject(body, "srv_send_msg", false);
     cJSON_AddStringToObject(body, "file_data", file_b64);
+    if (file_type == CAP_IM_QQ_FILE_TYPE_FILE) {
+        base_name = cap_im_qq_basename(path);
+        if (base_name && base_name[0]) {
+            cJSON_AddStringToObject(body, "file_name", base_name);
+        }
+    }
     json_str = cJSON_PrintUnformatted(body);
     cJSON_Delete(body);
     free(file_b64);
