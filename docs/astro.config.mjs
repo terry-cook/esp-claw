@@ -7,7 +7,7 @@ import starlightThemeNova from "starlight-theme-nova";
 import astroD2 from "astro-d2";
 import { remarkDocLinks } from "./src/plugins/remark-doc-links.ts";
 
-const BASE = "/esp-claw/";
+const BASE = "/";
 
 export default defineConfig({
   base: BASE,
@@ -15,7 +15,7 @@ export default defineConfig({
     astroD2(),
     starlight({
       title: "ESP-Claw Docs",
-      favicon: "/esp-claw/favicon.ico",
+      favicon: "/favicon.ico",
       social: [
         {
           icon: "github",

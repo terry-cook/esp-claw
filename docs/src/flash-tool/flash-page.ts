@@ -88,6 +88,7 @@ const unsupportedBanner = document.getElementById("unsupported-banner") as HTMLD
 const wifiPasswordInput = document.getElementById("wifi_password") as HTMLInputElement | null;
 const timezoneInput = document.getElementById("time_timezone") as HTMLInputElement | null;
 const llmModeSelect = document.getElementById("llm_mode") as HTMLSelectElement | null;
+const llmBaseUrlInput = document.getElementById("llm_base_url") as HTMLInputElement | null;
 const llmVendorActions = document.getElementById("llm_vendor_actions") as HTMLDivElement | null;
 const llmApiKeyLink = document.getElementById("llm_api_key_link") as HTMLAnchorElement | null;
 const llmDocsLink = document.getElementById("llm_docs_link") as HTMLAnchorElement | null;
@@ -561,11 +562,25 @@ llmModelInput?.addEventListener("input", () => {
   const allDefaults = Object.values(LLM_DEFAULT_MODELS);
   llmModelUserEdited = current !== "" && !allDefaults.includes(current);
 });
+let llmBaseUrlUserEdited = false;
+llmBaseUrlInput?.addEventListener("input", () => {
+  const current = llmBaseUrlInput.value.trim();
+  const allDefaults = Object.values(LLM_DEFAULT_BASE_URLS);
+  llmBaseUrlUserEdited = current !== "" && !allDefaults.includes(current);
+});
 
 const LLM_DEFAULT_MODELS: Record<string, string> = {
   qwen: "qwen3.6-plus",
   openai: "gpt-5.4",
   anthropic: "claude-sonnet-4-6",
+};
+
+const LLM_DEFAULT_BASE_URLS: Record<string, string> = {
+  qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  openai_compat: "https://api.openai.com/v1",
+  anthropic_compat: "https://api.anthropic.com/v1",
 };
 
 const LLM_VENDOR_LINKS = {
@@ -1106,6 +1121,10 @@ function syncLlmPanels(): void {
       llmModelInput.value = "";
     }
   }
+
+  if (llmBaseUrlInput && !llmBaseUrlUserEdited && mode) {
+    llmBaseUrlInput.value = LLM_DEFAULT_BASE_URLS[mode] ?? "";
+  }
 }
 
 if (configForm) {
@@ -1126,6 +1145,13 @@ llmModeSelect?.addEventListener("change", () => {
       llmModelUserEdited = false;
     }
   }
+  if (llmBaseUrlInput) {
+    const current = llmBaseUrlInput.value.trim();
+    const allDefaults = Object.values(LLM_DEFAULT_BASE_URLS);
+    if (current === "" || allDefaults.includes(current)) {
+      llmBaseUrlUserEdited = false;
+    }
+  }
   syncLlmPanels();
 });
 syncLlmPanels();
@@ -1143,21 +1169,19 @@ function getConfig(): NvsConfig {
   const mode = (document.getElementById("llm_mode") as HTMLSelectElement | null)?.value ?? "qwen";
   let llm_profile: string;
   let llm_backend_type: string;
-  let llm_base_url: string | undefined;
+  const llm_base_url = get("llm_base_url");
   if (mode === "openai") {
     llm_profile = "openai";
     llm_backend_type = "openai_compatible";
   } else if (mode === "openai_compat") {
     llm_profile = "custom_openai_compatible";
     llm_backend_type = "openai_compatible";
-    llm_base_url = get("llm_base_url");
   } else if (mode === "anthropic") {
     llm_profile = "anthropic";
     llm_backend_type = "anthropic";
   } else if (mode === "anthropic_compat") {
     llm_profile = "anthropic";
     llm_backend_type = "anthropic";
-    llm_base_url = get("llm_base_url");
   } else {
     llm_profile = "qwen_compatible";
     llm_backend_type = "openai_compatible";

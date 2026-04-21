@@ -1,16 +1,16 @@
 # ESP-Claw: An AI Agent Framework for IoT Devices
 
-<p style="text-align: center;">
+<div align="center">
   <a href="./README.md">English</a> |
   <a href="./README_CN.md">中文</a>
-</p>
+</div>
 
 ![LOGO](./docs/static/ESP-CLAW-LOGO.jpg)
 
-<p style="text-align: center;">
-  <a href="https://espressif.github.io/esp-claw/en/">Home</a> |
-  <a href="https://espressif.github.io/esp-claw/en/tutorial/">Docs</a>
-</p>
+<div align="center">
+  <a href="https://esp-claw.com/en/">Home</a> |
+  <a href="https://esp-claw.com/en/tutorial/">Docs</a>
+</div>
 
 **ESP-Claw** is a **Chat Coding** AI agent framework for IoT devices. It defines device behavior through conversation and completes the full loop of sensing, reasoning, decision-making, and execution locally on Espressif chips. Built on the OpenClaw concept, ESP-Claw adds the following features:
 
@@ -106,11 +106,11 @@ ESP-Claw supports cameras, microphones, and many other sensors. Most drivers can
 ### Online Flashing
 
 Configuration and firmware retrieval can be completed directly in the browser. No extra firmware compilation or software installation is required before flashing and use.
-[Try Online Flashing](https://espressif.github.io/esp-claw/en/flash)
+[Try Online Flashing](https://esp-claw.com/en/flash)
 
 ### Build from Source
 
-[`basic_demo`](./application/basic_demo) provides a foundational example. For detailed build and flashing instructions, please refer to the [docs](https://espressif.github.io/esp-claw/en/tutorial/)
+[`basic_demo`](./application/basic_demo) provides a foundational example. For detailed build and flashing instructions, please refer to the [docs](https://esp-claw.com/en/tutorial/)
 
 ## Code Architecture
 
