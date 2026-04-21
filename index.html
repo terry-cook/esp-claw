@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redirecting to esp-claw.com</title>
+  <meta name="description" content="ESP-Claw's homepage has moved to esp-claw.com" />
+</head>
+<body>
+  <main>
+    <a href="https://esp-claw.com">Redirecting...</a>
+  </main>
+
+  <script>
+    (function () {
+      var BASE = "https://esp-claw.com";
+      var path = window.location.pathname || "/";
+      var search = window.location.search || "";
+      var hash = window.location.hash || "";
+
+      if (path.indexOf("/esp-claw/") === 0) {
+        path = path.slice("/esp-claw".length);
+      }
+
+      if (!path || path[0] !== "/") {
+        path = "/" + (path || "");
+      }
+
+      var target = BASE + path + search + hash;
+
+      window.location.replace(target);
+    })();
+  </script>
+
+  <noscript>
+    <a href="https://esp-claw.com">JavaScript is disabled. Please click the link to continue.</a>
+  </noscript>
+</body>
+</html>
