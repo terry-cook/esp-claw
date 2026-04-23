@@ -1,6 +1,6 @@
 ---
 title: cap_files — 文件系统操作
-description: 文件系统代表：受管 FATFS 目录的完整 CRUD 能力与路径安全机制。
+description: 文件系统代表：受管 FATFS 目录的读写、编辑、复制、移动、删除与路径安全机制。
 ---
 
 import LinkToSource from '@/components/LinkToSource.astro';
@@ -10,7 +10,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## 定位
 
-`cap_files` 是**文件系统类 Capability 的代表实现**，向 LLM 和自动化规则暴露对受管 FATFS 目录的完整读写能力。它展示了如何在嵌入式环境中安全地将文件系统访问抽象为工具接口。
+`cap_files` 是**文件系统类 Capability 的代表实现**，向 LLM 和自动化规则暴露对受管 FATFS 目录的文件读写、编辑、复制、移动与删除能力。它展示了如何在嵌入式环境中安全地将文件系统访问抽象为工具接口。
 
 默认管理目录为 `/fatfs`，可通过 `cap_files_set_base_dir()` 在应用初始化时修改。
 
@@ -22,6 +22,8 @@ import { Aside } from '@astrojs/starlight/components';
 | `write_file` | 创建或覆盖文件 | `path`, `content` |
 | `edit_file` | 替换文件中第一个匹配字符串 | `path`, `old_string`, `new_string` |
 | `delete_file` | 删除文件 | `path` |
+| `copy_file` | 复制文件到新路径 | `src_path`, `dst_path` |
+| `move_file` | 移动文件到新路径 | `src_path`, `dst_path` |
 | `list_dir` | 递归列举目录下所有文件 | `prefix`（可选） |
 
 所有工具均标记为 `CLAW_CAP_FLAG_CALLABLE_BY_LLM`。
@@ -81,6 +83,14 @@ cap_files_ensure_parent_dirs(resolved_path);
 // 依次创建 /fatfs → /fatfs/notes → /fatfs/notes/2026 ...
 ```
 
+### `copy_file` / `move_file`：路径约束与目录补齐
+
+`copy_file` 和 `move_file` 都要求源路径与目标路径位于受管根目录下，且两者不能相同。
+
+目标路径缺失父目录时，会先自动补齐目录。
+
+`move_file` 优先使用 `rename()`；若底层文件系统或跨目录场景导致直接重命名失败，则自动回退到“先复制，再删除源文件”的流程，因此对调用方仍表现为一次移动操作。
+
 ### `edit_file`：字符串替换语义
 
 `edit_file` 实现的是**第一次匹配替换**（`strstr` + 内存复制），不是全局替换：
@@ -135,5 +145,5 @@ cap_files_register_group();
 ```
 
 <Aside type="caution">
-  `cap_files` 的 `write_file` 和 `edit_file` 允许 LLM 修改设备上的任何受管文件，包括 Skill 文档和 Lua 脚本。在多用户或不可信 LLM 场景下，应谨慎开放此 Capability，或通过访问控制限制可写目录。
+  `cap_files` 的 `write_file`、`edit_file`、`copy_file` 与 `move_file` 都会改变设备上的受管文件，包括 Skill 文档和 Lua 脚本。在多用户或不可信 LLM 场景下，应谨慎开放此 Capability，或通过访问控制限制可写目录。
 </Aside>

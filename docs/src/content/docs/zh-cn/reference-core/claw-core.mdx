@@ -58,6 +58,7 @@ Event Router 的 `run_agent` 动作会同时设置这两个标志，实现异步
 5. 已激活 Skill 文档：`claw_skill_active_skill_docs_provider`
 6. 当前可见工具列表：`claw_cap_tools_provider`
 7. Lua 异步任务状态：`cap_lua_async_jobs_provider`
+8. 当前设备时间上下文：`cap_time_context_provider`
 
 因此：大语言模型最终接收的工具列表，不仅取决于注册了哪些 Capability，还取决于 `claw_cap_set_llm_visible_groups`。
 

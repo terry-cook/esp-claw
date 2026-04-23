@@ -1,6 +1,6 @@
 ---
 title: cap_files — filesystem operations
-description: Filesystem reference capability—full CRUD over a managed FATFS tree with path-safety rules.
+description: Filesystem reference capability—read, write, edit, copy, move, and delete operations over a managed FATFS tree with path-safety rules.
 ---
 
 import LinkToSource from '@/components/LinkToSource.astro';
@@ -10,7 +10,7 @@ Source: <LinkToSource relativePath="components/claw_capabilities/cap_files/src/c
 
 ## Role
 
-`cap_files` is the **reference filesystem capability**: it exposes full read/write access to a managed FATFS directory to the LLM and automation rules, and shows how to wrap filesystem access as tools safely on embedded targets.
+`cap_files` is the **reference filesystem capability**: it exposes file read/write, edit, copy, move, and delete operations on a managed FATFS directory to the LLM and automation rules, and shows how to wrap filesystem access as tools safely on embedded targets.
 
 The default managed root is `/fatfs`; change it at init with `cap_files_set_base_dir()`.
 
@@ -22,6 +22,8 @@ The default managed root is `/fatfs`; change it at init with `cap_files_set_base
 | `write_file` | Create or overwrite a file | `path`, `content` |
 | `edit_file` | Replace the first matching substring | `path`, `old_string`, `new_string` |
 | `delete_file` | Delete a file | `path` |
+| `copy_file` | Copy a file to a new path | `src_path`, `dst_path` |
+| `move_file` | Move a file to a new path | `src_path`, `dst_path` |
 | `list_dir` | Recursively list files under the tree | optional `prefix` |
 
 All tools are flagged `CLAW_CAP_FLAG_CALLABLE_BY_LLM`.
@@ -81,6 +83,14 @@ cap_files_ensure_parent_dirs(resolved_path);
 // e.g. /fatfs → /fatfs/notes → /fatfs/notes/2026 …
 ```
 
+### `copy_file` / `move_file`: sandboxed paths and destination preparation
+
+Both `copy_file` and `move_file` require the source and destination to stay under the managed root, and they reject identical source/destination paths.
+
+Missing parent directories for the destination are created automatically.
+
+`move_file` tries `rename()` first. If direct rename is unavailable for the underlying filesystem path, it falls back to copy-then-delete so callers still get move semantics.
+
 ### `edit_file`: first match only
 
 `edit_file` does **one** substring replace (`strstr` + memcpy), not global replace:
@@ -135,5 +145,5 @@ cap_files_register_group();
 ```
 
 <Aside type="caution">
-  `write_file` and `edit_file` let the LLM change any managed file—including skills and Lua. Treat this capability carefully for multi-tenant or untrusted models, or narrow writable paths with access control.
+  `write_file`, `edit_file`, `copy_file`, and `move_file` all change managed files, including skills and Lua. Treat this capability carefully for multi-tenant or untrusted models, or narrow writable paths with access control.
 </Aside>

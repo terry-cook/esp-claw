@@ -14,7 +14,7 @@ Capabilities can play three roles:
 
 | Role | `kind` | Meaning |
 |------|--------|---------|
-| Callable tool | `CLAW_CAP_KIND_CALLABLE` | JSON in, text out; invokable from the LLM, Console, or automation |
+| Callable tool | `CLAW_CAP_KIND_CALLABLE` | JSON in, text out; invocable from the LLM, Console, or automation |
 | Event source | `CLAW_CAP_KIND_EVENT_SOURCE` | Long-lived producer feeding `claw_event_router` |
 | Hybrid | `CLAW_CAP_KIND_HYBRID` | Both callable and event emitting |
 
@@ -25,12 +25,12 @@ Descriptors are grouped into **capability groups** (`claw_cap_group_t`)—the sm
 | Family | Components | Notes |
 |--------|------------|-------|
 | **IM ingress** | `cap_im_*` | Chat platforms as both event sources and send helpers |
-| **Filesystem** | `cap_files` | Managed FATFS CRUD + listing |
+| **Filesystem** | `cap_files` | Managed FATFS read/write, edit, copy, move, delete, and listing |
 | **Lua** | `cap_lua` | Author, sync/async run, and track Lua jobs |
 | **Skill admin** | `cap_skill` | Register/unregister/activate/deactivate Skills (core as tools) |
 | **LLM inspect** | `cap_llm_inspect` | Nested multimodal calls over local images |
 | **Web search** | `cap_web_search` | External search APIs |
-| **Time** | `cap_time` | Device clock queries |
+| **Time** | `cap_time` | Current local time queries plus time context for relative-date reasoning |
 | **System info** | `cap_system` | Query system/memory/CPU/Wi-Fi/IP status and support operational actions like restart |
 | **Scheduler** | `cap_scheduler` | Cron-like scheduling |
 | **Router admin** | `cap_router_mgr` | Dynamic Event Router rule maintenance |
@@ -90,7 +90,7 @@ Three primary entry points:
   <LinkCard title="cap_im_tg" href="./cap-im-tg" description="IM reference: event source + callable sends" />
   <LinkCard title="cap_skill" href="./cap-skill" description="Core-surface reference: `claw_skill` as tools" />
   <LinkCard title="cap_llm_inspect" href="./cap-llm-inspect" description="LLM-interaction reference: nested inference" />
-  <LinkCard title="cap_files" href="./cap-files" description="Filesystem reference: managed-tree CRUD" />
+  <LinkCard title="cap_files" href="./cap-files" description="Filesystem reference: managed-tree read/write, edit, copy, move, and delete" />
   <LinkCard title="cap_system" href="./cap-system" description="System-state reference: inspect runtime status and support safe restart" />
   <LinkCard title="cap_scheduler" href="./cap-scheduler" description="Scheduling reference: time-based event triggering and periodic tasks" />
   <LinkCard title="cap_lua and Lua overview" href="./cap-lua" description="Lua tooling plus where scripts fit in the stack" />
