@@ -1,0 +1,156 @@
+# GitHub Actions: Build firmware + docs, deploy to Cloudflare Pages
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN  — Cloudflare API token with "Cloudflare Pages: Edit" permission
+#   CLOUDFLARE_ACCOUNT_ID — Your Cloudflare account ID
+#
+# Required repository variable (Settings → Variables → Actions):
+#   CLOUDFLARE_PROJECT_NAME — Cloudflare Pages project name (e.g. "esp-claw")
+#
+# First-time setup:
+#   1. Create a Cloudflare Pages project (can be empty) at dash.cloudflare.com
+#   2. Add the three secrets/variables above
+#   3. Push to master — the workflow will build and deploy automatically
+
+name: Build and Deploy
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # ── Job 1: Build firmware for each board ──────────────────────────────────
+  build-firmware:
+    name: Build firmware (${{ matrix.board }})
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: esp32_S3_DevKitC_1
+            target: esp32s3
+          - board: esp32_S3_DevKitC_1_breadboard
+            target: esp32s3
+          - board: lilygo_t_display_s3
+            target: esp32s3
+
+    env:
+      EXAMPLE_DIR: application/basic_demo
+      EXAMPLE_BOARD: ${{ matrix.board }}
+      EXAMPLE_TARGET: ${{ matrix.target }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          pip install idf_build_apps esp-bmgr-assist
+
+      - name: Build
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          pip install idf_build_apps esp-bmgr-assist
+          python .gitlab/ci/build_apps.py ${EXAMPLE_DIR} \
+            --config "=" \
+            -t ${EXAMPLE_TARGET} \
+            -r 1 \
+            -vv \
+            --board ${EXAMPLE_BOARD}
+
+      - name: Merge binary
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          python .gitlab/ci/merge_bin.py
+
+      - name: Upload merged binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-binary-${{ matrix.board }}
+          path: merged_binary/
+          retention-days: 7
+
+  # ── Job 2: Build docs + Online Flash page ─────────────────────────────────
+  build-docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    needs: build-firmware
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install d2 diagram tool
+        run: curl -fsSL https://d2lang.com/install.sh | sh -s --
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - name: Download all merged binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: merged-binary-*
+          path: merged_binary_all/
+          merge-multiple: true
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: pnpm install
+
+      - name: Generate firmware.json
+        working-directory: docs
+        run: pnpm run generate-firmware-json ../merged_binary_all --allow-empty
+
+      - name: Build docs site
+        working-directory: docs
+        run: pnpm run build
+
+      - name: Upload docs dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-dist
+          path: docs/dist/
+          retention-days: 7
+
+  # ── Job 3: Deploy to Cloudflare Pages (master only) ───────────────────────
+  deploy:
+    name: Deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Download docs dist
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-dist
+          path: docs-dist/
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy docs-dist/ --project-name=${{ vars.CLOUDFLARE_PROJECT_NAME }} --branch=master
