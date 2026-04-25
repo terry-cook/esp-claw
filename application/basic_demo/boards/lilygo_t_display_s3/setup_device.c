@@ -12,6 +12,9 @@
  * / i80) bus.  This interface is not covered by esp_board_manager's built-in
  * display_lcd SPI/DSI paths, so we register a fully custom device here.
  *
+ * Init sequence matches the official LilyGO factory example:
+ *   https://github.com/Xinyuan-LilyGO/T-Display-S3
+ *
  * Pin mapping (from T-Display-S3 schematic / pin_config.h):
  *   Power enable : GPIO15   (must be HIGH before using the LCD)
  *   Backlight    : GPIO38   (PWM via LEDC, active HIGH — controlled separately
@@ -20,7 +23,7 @@
  *   CS           : GPIO6
  *   DC           : GPIO7
  *   WR           : GPIO8
- *   RD           : GPIO9
+ *   RD           : GPIO9    (must be HIGH for write-only i80 mode)
  *   D0..D7       : GPIO39/40/41/42/45/46/47/48
  *   Resolution   : 320 x 170 (landscape)
  */
@@ -63,12 +66,36 @@ static const char *TAG = "lilygo_t_display_s3";
 #define LCD_V_RES           170
 /* ST7789 physical frame is 240 rows; 170-row panel is offset by 35 */
 #define LCD_Y_GAP            35
-/* i80 pixel clock — keep ≤ 20 MHz for reliable operation */
-#define LCD_PIXEL_CLK_HZ    (20 * 1000 * 1000)
+/* i80 pixel clock — 16 MHz matches LilyGO official factory example */
+#define LCD_PIXEL_CLK_HZ    (16 * 1000 * 1000)
 #define LCD_CMD_BITS          8
 #define LCD_PARAM_BITS        8
 /* Maximum DMA transfer: one full frame in RGB565 */
 #define LCD_MAX_TRANSFER_BYTES  (LCD_H_RES * LCD_V_RES * sizeof(uint16_t))
+
+/* ── Additional ST7789V init commands (from LilyGO factory example) */
+typedef struct {
+    uint8_t cmd;
+    uint8_t data[14];
+    uint8_t len;
+} lcd_cmd_t;
+
+static const lcd_cmd_t lcd_st7789v_cmds[] = {
+    {0x11, {0}, 0 | 0x80},        /* SLPOUT — exit sleep; 0x80 flag = 120 ms delay */
+    {0x3A, {0X05}, 1},            /* COLMOD — RGB565 */
+    {0xB2, {0X0B, 0X0B, 0X00, 0X33, 0X33}, 5},  /* PORCTRL — porch setting */
+    {0xB7, {0X75}, 1},            /* GCTRL — gate control */
+    {0xBB, {0X28}, 1},            /* VCOMS — VCOM setting */
+    {0xC0, {0X2C}, 1},            /* LCMCTRL — LCM control */
+    {0xC2, {0X01}, 1},            /* VDVVRHEN — VDV and VRH command enable */
+    {0xC3, {0X1F}, 1},            /* VRHS — VRH set */
+    {0xC6, {0X13}, 1},            /* FRCTRL2 — frame rate control */
+    {0xD0, {0XA7}, 1},            /* POWCTRL1 — power control 1 */
+    {0xD0, {0XA4, 0XA1}, 2},     /* POWCTRL1 — power control 1 (cont.) */
+    {0xD6, {0XA1}, 1},            /* Unknown register */
+    {0xE0, {0XF0, 0X05, 0X0A, 0X06, 0X06, 0X03, 0X2B, 0X32, 0X43, 0X36, 0X11, 0X10, 0X2B, 0X32}, 14},  /* P-GAMMA */
+    {0xE1, {0XF0, 0X08, 0X0C, 0X0B, 0X09, 0X24, 0X2B, 0X22, 0X43, 0X38, 0X15, 0X16, 0X2F, 0X37}, 14},  /* N-GAMMA */
+};
 
 /* ── Local type definitions ───────────────────────────────────
  * dev_display_lcd.h is only added to the include path for type:display_lcd
@@ -123,25 +150,35 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
     gpio_set_level(LCD_PIN_POWER_ON, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    /* 2. Create the i80 parallel bus */
+    /* 2. RD pin must be HIGH for write-only i80 mode */
+    gpio_config_t rd_cfg = {
+        .pin_bit_mask = BIT64(LCD_PIN_RD),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    ret = gpio_config(&rd_cfg);
+    ESP_RETURN_ON_ERROR(ret, TAG, "GPIO RD config failed");
+    gpio_set_level(LCD_PIN_RD, 1);
+
+    /* 3. Create the i80 parallel bus */
     esp_lcd_i80_bus_handle_t i80_bus = NULL;
     esp_lcd_i80_bus_config_t bus_cfg = {
-        .clk_src        = LCD_CLK_SRC_DEFAULT,
         .dc_gpio_num    = LCD_PIN_DC,
         .wr_gpio_num    = LCD_PIN_WR,
+        .clk_src        = LCD_CLK_SRC_DEFAULT,
         .data_gpio_nums = {
             LCD_PIN_D0, LCD_PIN_D1, LCD_PIN_D2, LCD_PIN_D3,
             LCD_PIN_D4, LCD_PIN_D5, LCD_PIN_D6, LCD_PIN_D7,
         },
         .bus_width          = 8,
         .max_transfer_bytes = LCD_MAX_TRANSFER_BYTES,
-        .psram_trans_align  = 64,
-        .sram_trans_align   = 4,
     };
     ret = esp_lcd_new_i80_bus(&bus_cfg, &i80_bus);
     ESP_RETURN_ON_ERROR(ret, TAG, "esp_lcd_new_i80_bus failed");
 
-    /* 3. Create panel IO over the i80 bus */
+    /* 4. Create panel IO over the i80 bus */
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_i80_config_t io_cfg = {
         .cs_gpio_num       = LCD_PIN_CS,
@@ -153,9 +190,6 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
             .dc_dummy_level = 0,
             .dc_data_level  = 1,
         },
-        .flags = {
-            .swap_color_bytes = 0, /* handled by LVGL / emote layer */
-        },
         .lcd_cmd_bits   = LCD_CMD_BITS,
         .lcd_param_bits = LCD_PARAM_BITS,
     };
@@ -166,7 +200,7 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* 4. Create the ST7789 panel driver */
+    /* 5. Create the ST7789 panel driver */
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = LCD_PIN_RST,
@@ -181,49 +215,28 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* 5. Reset and initialise the panel */
+    /* 6. Reset and initialise the panel (matches LilyGO factory example) */
     esp_lcd_panel_reset(panel_handle);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    esp_lcd_panel_init(panel_handle);
 
-    /* Send explicit init commands (esp_lcd_panel_init alone may be incomplete
-     * for i80).  Sequence mirrors the official LilyGO Arduino driver. */
-    esp_lcd_panel_io_handle_t io = io_handle;  /* already in scope from step 3 */
-
-    /* SLPOUT — exit sleep; needs >= 120 ms before next command */
-    const uint8_t slpout = 0x11;
-    esp_lcd_panel_io_tx_param(io, 0x11, &slpout, 0);
-    vTaskDelay(pdMS_TO_TICKS(150));
-
-    /* MADCTR: MY=0 MX=0 MV=1 (swap XY for landscape) ML=0 RGB */
-    const uint8_t madctr_val = 0x60; /* MY=0,MX=1,MV=1,ML=0,RGB=0 */
-    esp_lcd_panel_io_tx_param(io, 0x36, &madctr_val, 1);
-
-    /* COLMOD: 16-bit RGB565 */
-    const uint8_t colmod_val = 0x05;
-    esp_lcd_panel_io_tx_param(io, 0x3A, &colmod_val, 1);
-
-    /* Display inversion ON (IPS panel) */
-    esp_lcd_panel_io_tx_param(io, 0x21, NULL, 0);
-
-    /* NORON — normal display mode */
-    esp_lcd_panel_io_tx_param(io, 0x13, NULL, 0);
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-    /* DISPON — display on */
-    esp_lcd_panel_io_tx_param(io, 0x29, NULL, 0);
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    /* Set the draw-window offset so that draw_bitmap maps (0,0) → (35,0) in
-     * the physical 240×320 frame.  The driver's draw_bitmap callback adds
-     * these gaps to the incoming coordinates. */
-    esp_lcd_panel_set_gap(panel_handle, 0, LCD_Y_GAP);
-    /* swap_xy / mirror / invert already applied via MADCTR above, but keep
-     * the driver's internal state consistent so draw_bitmap works. */
+    /* Orientation — must come after init so the driver re-sends MADCTR */
+    esp_lcd_panel_invert_color(panel_handle, true);
     esp_lcd_panel_swap_xy(panel_handle, true);
     esp_lcd_panel_mirror(panel_handle, false, true);
-    esp_lcd_panel_invert_color(panel_handle, true);
+    esp_lcd_panel_set_gap(panel_handle, 0, LCD_Y_GAP);
 
-    /* 6. Populate handles and update board-manager device config */
+    /* 7. Send additional ST7789V init commands (gamma, power, porch, etc.)
+     * These are required for proper display quality on the T-Display-S3 panel. */
+    for (uint8_t i = 0; i < (sizeof(lcd_st7789v_cmds) / sizeof(lcd_cmd_t)); i++) {
+        esp_lcd_panel_io_tx_param(io_handle, lcd_st7789v_cmds[i].cmd,
+                                  lcd_st7789v_cmds[i].data,
+                                  lcd_st7789v_cmds[i].len & 0x7f);
+        if (lcd_st7789v_cmds[i].len & 0x80) {
+            vTaskDelay(pdMS_TO_TICKS(120));
+        }
+    }
+
+    /* 8. Populate handles and update board-manager device config */
     s_lcd_handles.panel_handle = panel_handle;
     s_lcd_handles.io_handle    = io_handle;
 
