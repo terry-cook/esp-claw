@@ -17,3 +17,8 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16MB.csv"
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+
+# Enable LCD display support code paths (ST7789 uses i80 parallel bus,
+# declared as type:custom in board_devices.yaml; this override ensures
+# the Kconfig symbol is set so LCD features are compiled in).
+CONFIG_ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT=y
