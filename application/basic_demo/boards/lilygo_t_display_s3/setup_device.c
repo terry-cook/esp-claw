@@ -68,12 +68,31 @@ static const char *TAG = "lilygo_t_display_s3";
 /* Maximum DMA transfer: one full frame in RGB565 */
 #define LCD_MAX_TRANSFER_BYTES  (LCD_H_RES * LCD_V_RES * sizeof(uint16_t))
 
-/* ── Static storage ──────────────────────────────────────────── */
-static dev_display_lcd_handles_t s_lcd_handles;
+/* ── Local type definitions ───────────────────────────────────
+ * dev_display_lcd.h is only added to the include path for type:display_lcd
+ * devices, not for type:custom. We define the struct layouts locally so
+ * that application code (app_expression_emote.c, lua_module_board_manager.c)
+ * can cast the returned void* pointers to dev_display_lcd_handles_t* /
+ * dev_display_lcd_config_t* and access the expected fields correctly.
+ * The field order MUST match the actual types in esp_board_manager.
+ */
+typedef struct {
+    esp_lcd_panel_handle_t    panel_handle; /* accessed by app as first field */
+    esp_lcd_panel_io_handle_t io_handle;    /* accessed by app as second field */
+} local_lcd_handles_t;
 
-/* Device config that the application reads via esp_board_manager_get_device_config().
- * "i80" sub_type → treated as panel-IO interface (colour-swap enabled in Lua/emote). */
-static const dev_display_lcd_config_t s_lcd_config = {
+typedef struct {
+    const char *sub_type;   /* "i80" → panel-IO interface, colour-swap enabled */
+    int         lcd_width;
+    int         lcd_height;
+    /* DSI sub_cfg omitted — not used for i80 panels */
+} local_lcd_config_t;
+
+/* ── Static storage ──────────────────────────────────────────── */
+static local_lcd_handles_t s_lcd_handles;
+
+/* Device config exposed to the application via esp_board_manager_get_device_config(). */
+static const local_lcd_config_t s_lcd_config = {
     .sub_type   = "i80",
     .lcd_width  = LCD_H_RES,
     .lcd_height = LCD_V_RES,
@@ -184,7 +203,7 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
 
 static int display_lcd_deinit(void *device_handle)
 {
-    dev_display_lcd_handles_t *handles = (dev_display_lcd_handles_t *)device_handle;
+    local_lcd_handles_t *handles = (local_lcd_handles_t *)device_handle;
     if (handles) {
         if (handles->panel_handle) {
             esp_lcd_panel_del(handles->panel_handle);
