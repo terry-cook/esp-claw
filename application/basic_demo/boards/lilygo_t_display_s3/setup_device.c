@@ -37,7 +37,6 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include "gen_board_device_custom.h"
-#include "dev_display_lcd.h"
 
 static const char *TAG = "lilygo_t_display_s3";
 
