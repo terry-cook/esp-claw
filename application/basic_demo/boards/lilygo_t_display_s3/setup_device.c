@@ -36,6 +36,8 @@
 #include "esp_lcd_panel_st7789.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gen_board_device_custom.h"
 
 static const char *TAG = "lilygo_t_display_s3";
@@ -119,6 +121,7 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
     ret = gpio_config(&pwr_cfg);
     ESP_RETURN_ON_ERROR(ret, TAG, "GPIO power-on config failed");
     gpio_set_level(LCD_PIN_POWER_ON, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     /* 2. Create the i80 parallel bus */
     esp_lcd_i80_bus_handle_t i80_bus = NULL;
@@ -180,15 +183,45 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
 
     /* 5. Reset and initialise the panel */
     esp_lcd_panel_reset(panel_handle);
-    esp_lcd_panel_init(panel_handle);
+    vTaskDelay(pdMS_TO_TICKS(20));
 
-    /* ST7789 170-row panel: physical frame buffer has 240 rows, offset by 35.
-     * swap_xy for landscape orientation (320 wide × 170 tall).            */
+    /* Send explicit init commands (esp_lcd_panel_init alone may be incomplete
+     * for i80).  Sequence mirrors the official LilyGO Arduino driver. */
+    esp_lcd_panel_io_handle_t io = io_handle;  /* already in scope from step 3 */
+
+    /* SLPOUT — exit sleep; needs >= 120 ms before next command */
+    const uint8_t slpout = 0x11;
+    esp_lcd_panel_io_tx_param(io, 0x11, &slpout, 0);
+    vTaskDelay(pdMS_TO_TICKS(150));
+
+    /* MADCTR: MY=0 MX=0 MV=1 (swap XY for landscape) ML=0 RGB */
+    const uint8_t madctr_val = 0x60; /* MY=0,MX=1,MV=1,ML=0,RGB=0 */
+    esp_lcd_panel_io_tx_param(io, 0x36, &madctr_val, 1);
+
+    /* COLMOD: 16-bit RGB565 */
+    const uint8_t colmod_val = 0x05;
+    esp_lcd_panel_io_tx_param(io, 0x3A, &colmod_val, 1);
+
+    /* Display inversion ON (IPS panel) */
+    esp_lcd_panel_io_tx_param(io, 0x21, NULL, 0);
+
+    /* NORON — normal display mode */
+    esp_lcd_panel_io_tx_param(io, 0x13, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    /* DISPON — display on */
+    esp_lcd_panel_io_tx_param(io, 0x29, NULL, 0);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    /* Set the draw-window offset so that draw_bitmap maps (0,0) → (35,0) in
+     * the physical 240×320 frame.  The driver's draw_bitmap callback adds
+     * these gaps to the incoming coordinates. */
     esp_lcd_panel_set_gap(panel_handle, 0, LCD_Y_GAP);
+    /* swap_xy / mirror / invert already applied via MADCTR above, but keep
+     * the driver's internal state consistent so draw_bitmap works. */
     esp_lcd_panel_swap_xy(panel_handle, true);
     esp_lcd_panel_mirror(panel_handle, false, true);
     esp_lcd_panel_invert_color(panel_handle, true);
-    esp_lcd_panel_disp_on_off(panel_handle, true);
 
     /* 6. Populate handles and update board-manager device config */
     s_lcd_handles.panel_handle = panel_handle;
